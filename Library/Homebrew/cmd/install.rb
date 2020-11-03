@@ -27,6 +27,10 @@ module Homebrew
         Install a <formula> or <cask>. Additional options specific to a <formula> may be
         appended to the command.
 
+        If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both <formula> and any dependencies installed while
+        installing it are built from source even if bottles are available for them, regardless of whether
+        `--build-from-source` was passed or not.
+
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for
         the installed formulae or, every 30 days, for all formulae.
       EOS

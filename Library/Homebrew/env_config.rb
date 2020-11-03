@@ -58,6 +58,12 @@ module Homebrew
         description:  "Use this as the browser when opening project homepages.",
         default_text: "`$BROWSER` or the OS's default browser.",
       },
+      HOMEBREW_BUILD_FROM_SOURCE:             {
+        description:  "If set, then all supplied formulae, along with their (recursive) dependencies, are built " \
+                      "from source even if bottles are available for them, regardless of whether " \
+                      "`--build-from-source` was passed or not.",
+        boolean:      true,
+      },
       HOMEBREW_CACHE:                         {
         description:  "Use this directory as the download cache.",
         default_text: "macOS: `$HOME/Library/Caches/Homebrew`, " \

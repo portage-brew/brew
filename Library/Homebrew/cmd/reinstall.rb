@@ -25,6 +25,10 @@ module Homebrew
         Uninstall and then reinstall a <formula> or <cask> using the same options it was
         originally installed with, plus any appended options specific to a <formula>.
 
+        If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both <formula> and any dependencies reinstalled while
+        reinstalling it are built from source even if bottles are available for them, regardless of whether
+        `--build-from-source` was passed or not.
+
         Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
         reinstalled formulae or, every 30 days, for all formulae.
       EOS

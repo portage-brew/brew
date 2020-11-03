@@ -366,6 +366,9 @@ Treat all named arguments as casks\.
 Install a \fIformula\fR or \fIcask\fR\. Additional options specific to a \fIformula\fR may be appended to the command\.
 .
 .P
+If \fBHOMEBREW_BUILD_FROM_SOURCE\fR is set, then both \fIformula\fR and any dependencies installed while installing it are built from source even if bottles are available for them, regardless of whether \fB\-\-build\-from\-source\fR was passed or not\.
+.
+.P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the installed formulae or, every 30 days, for all formulae\.
 .
 .TP
@@ -648,6 +651,9 @@ Syntax\-check all of Homebrew\'s Ruby files (if no \fB<tap>\fR is passed)\.
 Uninstall and then reinstall a \fIformula\fR or \fIcask\fR using the same options it was originally installed with, plus any appended options specific to a \fIformula\fR\.
 .
 .P
+If \fBHOMEBREW_BUILD_FROM_SOURCE\fR is set, then both \fIformula\fR and any dependencies reinstalled while reinstalling it are built from source even if bottles are available for them, regardless of whether \fB\-\-build\-from\-source\fR was passed or not\.
+.
+.P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the reinstalled formulae or, every 30 days, for all formulae\.
 .
 .TP
@@ -876,6 +882,9 @@ Fetch and reset Homebrew and all tap repositories (or any specified \fIrepositor
 .
 .SS "\fBupgrade\fR [\fIoptions\fR] [\fIoutdated_formula\fR|\fIoutdated_cask\fR \.\.\.]"
 Upgrade outdated casks and outdated, unpinned formulae using the same options they were originally installed with, plus any appended brew formula options\. If \fIcask\fR or \fIformula\fR are specified, upgrade only the given \fIcask\fR or \fIformula\fR kegs (unless they are pinned; see \fBpin\fR, \fBunpin\fR)\.
+.
+.P
+If \fBHOMEBREW_BUILD_FROM_SOURCE\fR is set, then both \fIformula\fR and any dependencies upgraded while upgrading it are built from source even if bottles are available for them, regardless of whether \fB\-\-build\-from\-source\fR was passed or not\.
 .
 .P
 Unless \fBHOMEBREW_NO_INSTALL_CLEANUP\fR is set, \fBbrew cleanup\fR will then be run for the upgraded formulae or, every 30 days, for all formulae\.
@@ -2642,6 +2651,10 @@ Use this as the browser when opening project homepages\.
 .
 .IP
 \fIDefault:\fR \fB$BROWSER\fR or the OS\'s default browser\.
+.
+.TP
+\fBHOMEBREW_BUILD_FROM_SOURCE\fR
+If set, then all supplied formulae, along with their (recursive) dependencies, are built from source even if bottles are available for them, regardless of whether \fB\-\-build\-from\-source\fR was passed or not\.
 .
 .TP
 \fBHOMEBREW_CACHE\fR

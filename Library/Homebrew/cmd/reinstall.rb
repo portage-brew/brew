@@ -26,6 +26,10 @@ module Homebrew
         Uninstall and then reinstall a <formula> or <cask> using the same options it was
         originally installed with, plus any appended options specific to a <formula>.
 
+        If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both <formula> and any dependencies reinstalled while
+        reinstalling it are built from source even if bottles are available for them, regardless of whether
+        `--build-from-source` was passed or not.
+
         Unless `HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
         outdated dependents and dependents with broken linkage, respectively.
 

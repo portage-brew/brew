@@ -27,6 +27,10 @@ module Homebrew
         Install a <formula> or <cask>. Additional options specific to a <formula> may be
         appended to the command.
 
+        If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both <formula> and any dependencies installed while
+        installing it are built from source even if bottles are available for them, regardless of whether
+        `--build-from-source` was passed or not.
+
         Unless `HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK` is set, `brew upgrade` or `brew reinstall` will be run for
         outdated dependents and dependents with broken linkage, respectively.
 

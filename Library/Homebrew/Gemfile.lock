@@ -54,7 +54,7 @@ GEM
     net-http-digest_auth (1.4.1)
     net-http-persistent (4.0.1)
       connection_pool (~> 2.2)
-    nokogiri (1.11.3)
+    nokogiri (1.11.5)
       mini_portile2 (~> 2.5.0)
       racc (~> 1.4)
     parallel (1.20.1)
@@ -132,7 +132,7 @@ GEM
       rubocop-ast (>= 1.1.0)
     rubocop-sorbet (0.6.1)
       rubocop
-    ruby-macho (2.5.0)
+    ruby-macho (2.5.1)
     ruby-progressbar (1.11.0)
     rubyntlm (0.6.3)
     simplecov (0.21.2)

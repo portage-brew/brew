@@ -1,3 +1,6 @@
+# typed: true
+# frozen_string_literal: true
+
 # Cleans a newly installed keg.
 # By default:
 #
@@ -8,12 +11,14 @@
 # * sets permissions on executables
 # * removes unresolved symlinks
 class Cleaner
-  # Create a cleaner for the given formula
+  include Context
+
+  # Create a cleaner for the given formula.
   def initialize(f)
     @f = f
   end
 
-  # Clean the keg of formula @f
+  # Clean the keg of the formula.
   def clean
     ObserverPathnameExtension.reset_counts!
 
@@ -24,10 +29,12 @@ class Cleaner
     [@f.bin, @f.sbin, @f.lib].each { |d| clean_dir(d) if d.exist? }
 
     # Get rid of any info 'dir' files, so they don't conflict at the link stage
-    info_dir_file = @f.info + "dir"
-    if info_dir_file.file? && !@f.skip_clean?(info_dir_file)
-      observe_file_removal info_dir_file
+    Dir.glob(@f.info/"**/dir").each do |f|
+      info_dir_file = Pathname(f)
+      observe_file_removal info_dir_file if info_dir_file.file? && !@f.skip_clean?(info_dir_file)
     end
+
+    rewrite_shebangs
 
     prune
   end
@@ -39,7 +46,7 @@ class Cleaner
   end
 
   # Removes any empty directories in the formula's prefix subtree
-  # Keeps any empty directions projected by skip_clean
+  # Keeps any empty directories protected by skip_clean
   # Removes any unresolved symlinks
   def prune
     dirs = []
@@ -58,7 +65,7 @@ class Cleaner
     # actual files gets removed correctly.
     dirs.reverse_each do |d|
       if d.children.empty?
-        puts "rmdir: #{d} (empty)" if ARGV.verbose?
+        puts "rmdir: #{d} (empty)" if verbose?
         d.rmdir
       end
     end
@@ -72,6 +79,12 @@ class Cleaner
   def executable_path?(path)
     path.text_executable? || path.executable?
   end
+
+  # Both these files are completely unnecessary to package and cause
+  # pointless conflicts with other formulae. They are removed by Debian,
+  # Arch & MacPorts amongst other packagers as well. The files are
+  # created as part of installing any Perl module.
+  PERL_BASENAMES = Set.new(%w[perllocal.pod .packlist]).freeze
 
   # Clean a top-level (bin, sbin, lib) directory, recursively, by fixing file
   # permissions and removing .la files, unless the files (or parent
@@ -88,18 +101,12 @@ class Cleaner
 
       Find.prune if @f.skip_clean? path
 
-      next if path.symlink? || path.directory?
+      next if path.directory?
 
-      if path.extname == ".la"
+      if path.extname == ".la" || PERL_BASENAMES.include?(path.basename.to_s)
         path.unlink
-      elsif path.basename.to_s == "perllocal.pod"
-        # Both this file & the .packlist one below are completely unnecessary
-        # to package & causes pointless conflict with other formulae. They are
-        # removed by Debian, Arch & MacPorts amongst other packagers as well.
-        # The files are created as part of installing any Perl module.
-        path.unlink
-      elsif path.basename.to_s == ".packlist" # Hidden file, not file extension!
-        path.unlink
+      elsif path.symlink?
+        # Skip it.
       else
         # Set permissions for executables and non-executables
         perms = if executable_path?(path)
@@ -107,13 +114,29 @@ class Cleaner
         else
           0444
         end
-        if ARGV.debug?
+        if debug?
           old_perms = path.stat.mode & 0777
-          if perms != old_perms
-            puts "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}"
-          end
+          odebug "Fixing #{path} permissions from #{old_perms.to_s(8)} to #{perms.to_s(8)}" if perms != old_perms
         end
         path.chmod perms
+      end
+    end
+  end
+
+  def rewrite_shebangs
+    require "language/perl"
+    require "utils/shebang"
+
+    basepath = @f.prefix.realpath
+    basepath.find do |path|
+      Find.prune if @f.skip_clean? path
+
+      next if path.directory? || path.symlink?
+
+      begin
+        Utils::Shebang.rewrite_shebang Language::Perl::Shebang.detected_perl_shebang(@f), path
+      rescue ShebangDetectionError
+        break
       end
     end
   end

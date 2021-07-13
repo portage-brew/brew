@@ -1,46 +1,48 @@
+# typed: false
+# frozen_string_literal: true
+
 require "cmd/info"
 
-describe "brew info", :integration_test do
-  before do
+require "cmd/shared_examples/args_parse"
+
+describe "brew info" do
+  it_behaves_like "parseable arguments"
+
+  it "prints as json with the --json=v1 flag", :integration_test do
     setup_test_formula "testball"
-  end
 
-  it "prints information about a given Formula" do
-    expect { brew "info", "testball" }
-      .to output(/testball: stable 0.1/).to_stdout
-      .and not_to_output.to_stderr
-      .and be_a_success
-  end
-
-  it "prints as json with the --json=v1 flag" do
     expect { brew "info", "testball", "--json=v1" }
       .to output(a_json_string).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end
-end
 
-describe Homebrew do
-  let(:remote) { "https://github.com/Homebrew/homebrew-core" }
+  it "prints as json with the --json=v2 flag", :integration_test do
+    setup_test_formula "testball"
 
-  specify "::analytics_table" do
-    results = { ack: 10, wget: 100 }
-    expect { subject.analytics_table("install", "30", results) }
-      .to output(/110 |  100.00%/).to_stdout
+    expect { brew "info", "testball", "--json=v2" }
+      .to output(a_json_string).to_stdout
       .and not_to_output.to_stderr
+      .and be_a_success
   end
 
-  specify "::github_remote_path" do
-    expect(subject.github_remote_path(remote, "Formula/git.rb"))
-      .to eq("https://github.com/Homebrew/homebrew-core/blob/master/Formula/git.rb")
+  describe Homebrew do
+    describe "::github_remote_path" do
+      let(:remote) { "https://github.com/Homebrew/homebrew-core" }
 
-    expect(subject.github_remote_path("#{remote}.git", "Formula/git.rb"))
-      .to eq("https://github.com/Homebrew/homebrew-core/blob/master/Formula/git.rb")
+      specify "returns correct URLs" do
+        expect(described_class.github_remote_path(remote, "Formula/git.rb"))
+          .to eq("https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/git.rb")
 
-    expect(subject.github_remote_path("git@github.com:user/repo", "foo.rb"))
-      .to eq("https://github.com/user/repo/blob/master/foo.rb")
+        expect(described_class.github_remote_path("#{remote}.git", "Formula/git.rb"))
+          .to eq("https://github.com/Homebrew/homebrew-core/blob/HEAD/Formula/git.rb")
 
-    expect(subject.github_remote_path("https://mywebsite.com", "foo/bar.rb"))
-      .to eq("https://mywebsite.com/foo/bar.rb")
+        expect(described_class.github_remote_path("git@github.com:user/repo", "foo.rb"))
+          .to eq("https://github.com/user/repo/blob/HEAD/foo.rb")
+
+        expect(described_class.github_remote_path("https://mywebsite.com", "foo/bar.rb"))
+          .to eq("https://mywebsite.com/foo/bar.rb")
+      end
+    end
   end
 end

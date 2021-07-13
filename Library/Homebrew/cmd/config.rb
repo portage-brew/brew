@@ -1,31 +1,29 @@
-#:  * `config`:
-#:    Show Homebrew and system configuration useful for debugging. If you file
-#:    a bug report, you will likely be asked for this information if you do not
-#:    provide it.
+# typed: true
+# frozen_string_literal: true
 
 require "system_config"
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def config_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `config`
-
-        Show Homebrew and system configuration useful for debugging. If you file
-        a bug report, you will likely be asked for this information if you do not
-        provide it.
+      description <<~EOS
+        Show Homebrew and system configuration info useful for debugging. If you file
+        a bug report, you will be required to provide this information.
       EOS
-      switch :verbose
-      switch :debug
+
+      named_args :none
     end
   end
 
   def config
     config_args.parse
-    raise UsageError unless args.remaining.empty?
+
     SystemConfig.dump_verbose_config
   end
 end

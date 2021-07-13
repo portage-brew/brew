@@ -1,10 +1,21 @@
+# typed: false
+# frozen_string_literal: true
+
 require "hardware"
 require "software_spec"
-require "rexml/document"
 require "development_tools"
+require "extend/ENV"
+require "system_command"
 
-class SystemConfig
+# Helper module for querying information about the system configuration.
+#
+# @api private
+module SystemConfig
   class << self
+    extend T::Sig
+
+    include SystemCommand::Mixin
+
     def clang
       @clang ||= if DevelopmentTools.installed?
         DevelopmentTools.clang_version
@@ -21,28 +32,52 @@ class SystemConfig
       end
     end
 
+    sig { returns(Pathname) }
+    def homebrew_repo
+      HOMEBREW_REPOSITORY.dup.extend(GitRepositoryExtension)
+    end
+
+    sig { returns(String) }
     def head
-      HOMEBREW_REPOSITORY.git_head || "(none)"
+      homebrew_repo.git_head || "(none)"
     end
 
+    sig { returns(String) }
     def last_commit
-      HOMEBREW_REPOSITORY.git_last_commit || "never"
+      homebrew_repo.git_last_commit || "never"
     end
 
+    sig { returns(String) }
     def origin
-      HOMEBREW_REPOSITORY.git_origin || "(none)"
+      homebrew_repo.git_origin || "(none)"
     end
 
+    sig { returns(String) }
     def core_tap_head
       CoreTap.instance.git_head || "(none)"
     end
 
+    sig { returns(String) }
     def core_tap_last_commit
       CoreTap.instance.git_last_commit || "never"
     end
 
+    sig { returns(String) }
+    def core_tap_branch
+      CoreTap.instance.git_branch || "(none)"
+    end
+
+    sig { returns(String) }
     def core_tap_origin
       CoreTap.instance.remote || "(none)"
+    end
+
+    sig { returns(String) }
+    def describe_clang
+      return "N/A" if clang.null?
+
+      clang_build_info = clang_build.null? ? "(parse error)" : clang_build
+      "#{clang} build #{clang_build_info}"
     end
 
     def describe_path(path)
@@ -56,6 +91,7 @@ class SystemConfig
       end
     end
 
+    sig { returns(String) }
     def describe_homebrew_ruby_version
       case RUBY_VERSION
       when /^1\.[89]/, /^2\.0/
@@ -65,136 +101,102 @@ class SystemConfig
       end
     end
 
+    sig { returns(String) }
     def describe_homebrew_ruby
       "#{describe_homebrew_ruby_version} => #{RUBY_PATH}"
     end
 
+    sig { returns(T.nilable(String)) }
     def hardware
       return if Hardware::CPU.type == :dunno
 
       "CPU: #{Hardware.cores_as_words}-core #{Hardware::CPU.bits}-bit #{Hardware::CPU.family}"
     end
 
+    sig { returns(String) }
     def kernel
       `uname -m`.chomp
     end
 
-    def describe_java
-      return "N/A" unless which "java"
-
-      _, err, status = system_command("java", args: ["-version"], print_stderr: false)
-      return "N/A" unless status.success?
-
-      err[/java version "([\d\._]+)"/, 1] || "N/A"
-    end
-
+    sig { returns(String) }
     def describe_git
-      return "N/A" unless Utils.git_available?
+      return "N/A" unless Utils::Git.available?
 
-      "#{Utils.git_version} => #{Utils.git_path}"
+      "#{Utils::Git.version} => #{Utils::Git.path}"
     end
 
+    sig { returns(String) }
     def describe_curl
-      out, = system_command(curl_executable, args: ["--version"])
+      out, = system_command(curl_executable, args: ["--version"], verbose: false)
 
-      if /^curl (?<curl_version>[\d\.]+)/ =~ out
+      if /^curl (?<curl_version>[\d.]+)/ =~ out
         "#{curl_version} => #{curl_executable}"
       else
         "N/A"
       end
     end
 
-    def dump_verbose_config(f = $stdout)
-      f.puts "HOMEBREW_VERSION: #{HOMEBREW_VERSION}"
-      f.puts "ORIGIN: #{origin}"
-      f.puts "HEAD: #{head}"
-      f.puts "Last commit: #{last_commit}"
+    def core_tap_config(f = $stdout)
       if CoreTap.instance.installed?
         f.puts "Core tap ORIGIN: #{core_tap_origin}"
         f.puts "Core tap HEAD: #{core_tap_head}"
         f.puts "Core tap last commit: #{core_tap_last_commit}"
+        f.puts "Core tap branch: #{core_tap_branch}"
       else
         f.puts "Core tap: N/A"
       end
-      defaults_hash = {
-        HOMEBREW_PREFIX:        Homebrew::DEFAULT_PREFIX,
-        HOMEBREW_REPOSITORY:    Homebrew::DEFAULT_REPOSITORY,
-        HOMEBREW_CELLAR:        Homebrew::DEFAULT_CELLAR,
-        HOMEBREW_CACHE:         "#{ENV["HOME"]}/Library/Caches/Homebrew",
-        HOMEBREW_TEMP:          ENV["HOMEBREW_SYSTEM_TEMP"],
-        HOMEBREW_RUBY_WARNINGS: "-W0",
-      }.freeze
-      boring_keys = %w[
-        HOMEBREW_BROWSER
-        HOMEBREW_EDITOR
+    end
 
-        HOMEBREW_ANALYTICS_ID
-        HOMEBREW_ANALYTICS_USER_UUID
-        HOMEBREW_AUTO_UPDATE_CHECKED
-        HOMEBREW_BOTTLE_DEFAULT_DOMAIN
-        HOMEBREW_BOTTLE_DOMAIN
-        HOMEBREW_BREW_FILE
-        HOMEBREW_COMMAND_DEPTH
-        HOMEBREW_CURL
-        HOMEBREW_GIT
-        HOMEBREW_GIT_CONFIG_FILE
-        HOMEBREW_LIBRARY
-        HOMEBREW_MACOS_VERSION
-        HOMEBREW_MACOS_VERSION_NUMERIC
-        HOMEBREW_MINIMUM_GIT_VERSION
-        HOMEBREW_RUBY_PATH
-        HOMEBREW_SYSTEM
-        HOMEBREW_SYSTEM_TEMP
-        HOMEBREW_OS_VERSION
-        HOMEBREW_PATH
-        HOMEBREW_PROCESSOR
-        HOMEBREW_PRODUCT
-        HOMEBREW_USER_AGENT
-        HOMEBREW_USER_AGENT_CURL
-        HOMEBREW_VERSION
-      ].freeze
+    def homebrew_config(f = $stdout)
+      f.puts "HOMEBREW_VERSION: #{HOMEBREW_VERSION}"
+      f.puts "ORIGIN: #{origin}"
+      f.puts "HEAD: #{head}"
+      f.puts "Last commit: #{last_commit}"
+    end
+
+    def homebrew_env_config(f = $stdout)
       f.puts "HOMEBREW_PREFIX: #{HOMEBREW_PREFIX}"
-      if defaults_hash[:HOMEBREW_REPOSITORY] != HOMEBREW_REPOSITORY.to_s
-        f.puts "HOMEBREW_REPOSITORY: #{HOMEBREW_REPOSITORY}"
+      {
+        HOMEBREW_REPOSITORY: Homebrew::DEFAULT_REPOSITORY,
+        HOMEBREW_CELLAR:     Homebrew::DEFAULT_CELLAR,
+      }.freeze.each do |key, default|
+        value = Object.const_get(key)
+        f.puts "#{key}: #{value}" if value.to_s != default.to_s
       end
-      if defaults_hash[:HOMEBREW_CELLAR] != HOMEBREW_CELLAR.to_s
-        f.puts "HOMEBREW_CELLAR: #{HOMEBREW_CELLAR}"
-      end
-      if defaults_hash[:HOMEBREW_CACHE] != HOMEBREW_CACHE.to_s
-        f.puts "HOMEBREW_CACHE: #{HOMEBREW_CACHE}"
-      end
-      if defaults_hash[:HOMEBREW_TEMP] != HOMEBREW_TEMP.to_s
-        f.puts "HOMEBREW_TEMP: #{HOMEBREW_TEMP}"
-      end
-      if defaults_hash[:HOMEBREW_RUBY_WARNINGS] != ENV["HOMEBREW_RUBY_WARNINGS"].to_s
-        f.puts "HOMEBREW_RUBY_WARNINGS: #{ENV["HOMEBREW_RUBY_WARNINGS"]}"
-      end
-      unless ENV["HOMEBREW_ENV"]
-        ENV.sort.each do |key, value|
-          next unless key.start_with?("HOMEBREW_")
-          next if boring_keys.include?(key)
-          next if defaults_hash[key.to_sym]
 
-          value = "set" if key =~ /(cookie|key|token|password)/i
-          f.puts "#{key}: #{value}"
+      Homebrew::EnvConfig::ENVS.each do |env, hash|
+        method_name = Homebrew::EnvConfig.env_method_name(env, hash)
+
+        if hash[:boolean]
+          f.puts "#{env}: set" if Homebrew::EnvConfig.send(method_name)
+          next
         end
-      end
-      f.puts hardware if hardware
-      f.puts "Homebrew Ruby: #{describe_homebrew_ruby}"
-      f.print "Clang: "
-      if clang.null?
-        f.puts "N/A"
-      else
-        f.print "#{clang} build "
-        if clang_build.null?
-          f.puts "(parse error)"
+
+        value = Homebrew::EnvConfig.send(method_name)
+        next unless value
+        next if (default = hash[:default].presence) && value.to_s == default.to_s
+
+        if ENV.sensitive?(env)
+          f.puts "#{env}: set"
         else
-          f.puts clang_build
+          f.puts "#{env}: #{value}"
         end
       end
+      f.puts "Homebrew Ruby: #{describe_homebrew_ruby}"
+    end
+
+    def host_software_config(f = $stdout)
+      f.puts "Clang: #{describe_clang}"
       f.puts "Git: #{describe_git}"
       f.puts "Curl: #{describe_curl}"
-      f.puts "Java: #{describe_java}" if describe_java != "N/A"
+    end
+
+    def dump_verbose_config(f = $stdout)
+      homebrew_config(f)
+      core_tap_config(f)
+      homebrew_env_config(f)
+      f.puts hardware if hardware
+      host_software_config(f)
     end
     alias dump_generic_verbose_config dump_verbose_config
   end

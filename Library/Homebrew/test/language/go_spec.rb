@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "language/go"
 
 describe Language::Go do

@@ -1,16 +1,13 @@
+# typed: true
+# frozen_string_literal: true
+
 module Utils
-  class Bottles
+  module Bottles
     class << self
       undef tag
 
       def tag
-        if MacOS.version >= :lion
-          MacOS.cat
-        elsif MacOS.version == :snow_leopard
-          Hardware::CPU.is_64_bit? ? :snow_leopard : :snow_leopard_32
-        else
-          "#{MacOS.cat}_64".to_sym
-        end
+        Utils::Bottles::Tag.new(system: MacOS.version.to_sym, arch: Hardware::CPU.arch)
       end
     end
 
@@ -19,30 +16,36 @@ module Utils
 
       alias generic_find_matching_tag find_matching_tag
 
-      def find_matching_tag(tag)
-        generic_find_matching_tag(tag) ||
-          find_older_compatible_tag(tag)
-      end
-
-      def tag_without_or_later(tag)
-        tag
+      def find_matching_tag(tag, no_older_versions: false)
+        # Used primarily by developers testing beta macOS releases.
+        if no_older_versions ||
+           (OS::Mac.version.prerelease? &&
+            Homebrew::EnvConfig.developer? &&
+            Homebrew::EnvConfig.skip_or_later_bottles?)
+          generic_find_matching_tag(tag)
+        else
+          generic_find_matching_tag(tag) ||
+            find_older_compatible_tag(tag)
+        end
       end
 
       # Find a bottle built for a previous version of macOS.
       def find_older_compatible_tag(tag)
-        begin
-          tag_version = MacOS::Version.from_symbol(tag)
-        rescue ArgumentError
-          return
+        tag_version = begin
+          tag.to_macos_version
+        rescue MacOSVersionError
+          nil
         end
 
+        return if tag_version.blank?
+
         keys.find do |key|
-          key_tag_version = tag_without_or_later(key)
-          begin
-            MacOS::Version.from_symbol(key_tag_version) <= tag_version
-          rescue ArgumentError
-            false
-          end
+          key_tag = Tag.from_symbol(key)
+          next if key_tag.arch != tag.arch
+
+          key_tag.to_macos_version <= tag_version
+        rescue MacOSVersionError
+          false
         end
       end
     end

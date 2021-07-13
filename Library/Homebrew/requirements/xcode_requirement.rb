@@ -1,7 +1,17 @@
+# typed: false
+# frozen_string_literal: true
+
 require "requirement"
 
+# A requirement on Xcode.
+#
+# @api private
 class XcodeRequirement < Requirement
+  extend T::Sig
+
   fatal true
+
+  attr_reader :version
 
   satisfy(build_env: false) { xcode_installed_version }
 
@@ -10,6 +20,7 @@ class XcodeRequirement < Requirement
     super(tags)
   end
 
+  sig { returns(T::Boolean) }
   def xcode_installed_version
     return false unless MacOS::Xcode.installed?
     return true unless @version
@@ -17,29 +28,37 @@ class XcodeRequirement < Requirement
     MacOS::Xcode.version >= @version
   end
 
+  sig { returns(String) }
   def message
     version = " #{@version}" if @version
     message = <<~EOS
-      A full installation of Xcode.app#{version} is required to compile this software.
-      Installing just the Command Line Tools is not sufficient.
+      A full installation of Xcode.app#{version} is required to compile
+      this software. Installing just the Command Line Tools is not sufficient.
     EOS
     if @version && Version.new(MacOS::Xcode.latest_version) < Version.new(@version)
       message + <<~EOS
+
         Xcode#{version} cannot be installed on macOS #{MacOS.version}.
         You must upgrade your version of macOS.
       EOS
-    elsif MacOS.version >= :lion
-      message + <<~EOS
-        Xcode can be installed from the App Store.
-      EOS
     else
       message + <<~EOS
-        Xcode can be installed from #{Formatter.url("https://developer.apple.com/download/more/")}.
+
+        Xcode can be installed from the App Store.
       EOS
     end
   end
 
+  sig { returns(String) }
   def inspect
-    "#<#{self.class.name}: #{tags.inspect} version=#{@version.inspect}>"
+    "#<#{self.class.name}: version>=#{@version.inspect} #{tags.inspect}>"
+  end
+
+  def display_s
+    return name.capitalize unless @version
+
+    "#{name.capitalize} >= #{@version}"
   end
 end
+
+require "extend/os/requirements/xcode_requirement"

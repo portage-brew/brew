@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "description_cache_store"
 
 describe DescriptionCacheStore do

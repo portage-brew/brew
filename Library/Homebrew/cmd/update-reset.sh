@@ -1,7 +1,8 @@
-#:  * `update-reset` [<repositories>]:
-#:    Fetches and resets Homebrew and all tap repositories (or the specified
-#:    `repositories`) using `git`(1) to their latest `origin/master`. Note this
-#:    will destroy all your uncommitted or committed changes.
+#:  * `update-reset` [<repository> ...]
+#:
+#:  Fetch and reset Homebrew and all tap repositories (or any specified <repository>) using `git`(1) to their latest `origin/HEAD`.
+#:
+#:  *Note:* this will destroy all your uncommitted or committed changes.
 
 homebrew-update-reset() {
   local DIR
@@ -9,45 +10,40 @@ homebrew-update-reset() {
 
   for option in "$@"
   do
-    case "$option" in
+    case "${option}" in
       -\?|-h|--help|--usage)          brew help update-reset; exit $? ;;
       --debug)                        HOMEBREW_DEBUG=1 ;;
       -*)
-        [[ "$option" = *d* ]] && HOMEBREW_DEBUG=1
+        [[ "${option}" = *d* ]] && HOMEBREW_DEBUG=1
         ;;
       *)
-        REPOS+=("$option")
+        REPOS+=("${option}")
         ;;
     esac
   done
 
-  if [[ -n "$HOMEBREW_DEBUG" ]]
+  if [[ -n "${HOMEBREW_DEBUG}" ]]
   then
     set -x
   fi
 
   if [[ -z "${REPOS[*]}" ]]
   then
-    REPOS+=("$HOMEBREW_REPOSITORY" "$HOMEBREW_LIBRARY"/Taps/*/*)
+    REPOS+=("${HOMEBREW_REPOSITORY}" "${HOMEBREW_LIBRARY}"/Taps/*/*)
   fi
 
   for DIR in "${REPOS[@]}"
   do
-    [[ -d "$DIR/.git" ]] || continue
-    cd "$DIR" || continue
-    echo "==> Fetching $DIR..."
-
-    if [[ "$DIR" = "$HOMEBREW_REPOSITORY" ]]; then
-      latest_tag="$(git ls-remote --tags --refs -q origin | tail -n1 | cut -f2)"
-      git fetch --force origin --shallow-since="$latest_tag"
-    else
-      git fetch --force --tags origin
-    fi
-
+    [[ -d "${DIR}/.git" ]] || continue
+    ohai "Fetching ${DIR}..."
+    git -C "${DIR}" fetch --force --tags origin
+    git -C "${DIR}" remote set-head origin --auto >/dev/null
     echo
 
-    echo "==> Resetting $DIR..."
-    git checkout --force -B master origin/master
+    ohai "Resetting ${DIR}..."
+    head="$(git -C "${DIR}" symbolic-ref refs/remotes/origin/HEAD)"
+    head="${head#refs/remotes/origin/}"
+    git -C "${DIR}" checkout --force -B "${head}" origin/HEAD
     echo
   done
 }

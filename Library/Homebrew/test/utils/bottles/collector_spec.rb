@@ -1,26 +1,48 @@
+# typed: false
+# frozen_string_literal: true
+
 require "utils/bottles"
 
 describe Utils::Bottles::Collector do
+  subject(:collector) { described_class.new }
+
   describe "#fetch_checksum_for" do
     it "returns passed tags" do
-      subject[:lion] = "foo"
-      subject[:mountain_lion] = "bar"
-      expect(subject.fetch_checksum_for(:mountain_lion)).to eq(["bar", :mountain_lion])
+      collector[:mojave] = { checksum: Checksum.new("foo_checksum"), cellar: "foo_cellar" }
+      collector[:catalina] = { checksum: Checksum.new("bar_checksum"), cellar: "bar_cellar" }
+      expect(collector.fetch_checksum_for(:catalina)).to eq(["bar_checksum", :catalina, "bar_cellar"])
     end
 
     it "returns nil if empty" do
-      expect(subject.fetch_checksum_for(:foo)).to be nil
+      expect(collector.fetch_checksum_for(:foo)).to be nil
     end
 
     it "returns nil when there is no match" do
-      subject[:lion] = "foo"
-      expect(subject.fetch_checksum_for(:foo)).to be nil
+      collector[:catalina] = "foo"
+      expect(collector.fetch_checksum_for(:foo)).to be nil
     end
 
     it "uses older tags when needed", :needs_macos do
-      subject[:lion] = "foo"
-      expect(subject.fetch_checksum_for(:mountain_lion)).to eq(["foo", :lion])
-      expect(subject.fetch_checksum_for(:snow_leopard)).to be nil
+      collector[:mojave] = "foo"
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:mojave))).to eq(:mojave)
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:catalina))).to eq(:mojave)
+    end
+
+    it "does not use older tags when requested not to", :needs_macos do
+      allow(Homebrew::EnvConfig).to receive(:developer?).and_return(true)
+      allow(Homebrew::EnvConfig).to receive(:skip_or_later_bottles?).and_return(true)
+      allow(OS::Mac.version).to receive(:prerelease?).and_return(true)
+      collector[:mojave] = "foo"
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:mojave))).to eq(:mojave)
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:catalina))).to be_nil
+    end
+
+    it "ignores HOMEBREW_SKIP_OR_LATER_BOTTLES on release versions", :needs_macos do
+      allow(Homebrew::EnvConfig).to receive(:skip_or_later_bottles?).and_return(true)
+      allow(OS::Mac.version).to receive(:prerelease?).and_return(false)
+      collector[:mojave] = "foo"
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:mojave))).to eq(:mojave)
+      expect(collector.send(:find_matching_tag, Utils::Bottles::Tag.from_symbol(:catalina))).to eq(:mojave)
     end
   end
 end

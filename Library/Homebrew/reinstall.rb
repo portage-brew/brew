@@ -1,3 +1,6 @@
+# typed: true
+# frozen_string_literal: true
+
 require "formula_installer"
 require "development_tools"
 require "messages"
@@ -5,48 +8,88 @@ require "messages"
 module Homebrew
   module_function
 
-  def reinstall_formula(f, build_from_source: false)
-    if f.opt_prefix.directory?
-      keg = Keg.new(f.opt_prefix.resolved_path)
+  def reinstall_formula(
+    formula,
+    flags:,
+    installed_on_request: false,
+    force_bottle: false,
+    build_from_source_formulae: [],
+    interactive: false,
+    keep_tmp: false,
+    force: false,
+    debug: false,
+    quiet: false,
+    verbose: false,
+    git: false
+  )
+    if formula.opt_prefix.directory?
+      keg = Keg.new(formula.opt_prefix.resolved_path)
+      tab = Tab.for_keg(keg)
       keg_had_linked_opt = true
       keg_was_linked = keg.linked?
       backup keg
     end
 
-    build_options = BuildOptions.new(Options.create(ARGV.flags_only), f.options)
+    build_options = BuildOptions.new(Options.create(flags), formula.options)
     options = build_options.used_options
-    options |= f.build.used_options
-    options &= f.options
+    options |= formula.build.used_options
+    options &= formula.options
 
-    fi = FormulaInstaller.new(f)
-    fi.options              = options
-    fi.invalid_option_names = build_options.invalid_option_names
-    fi.build_bottle         = ARGV.build_bottle? || (!f.bottle_defined? && f.build.bottle?)
-    fi.interactive          = ARGV.interactive?
-    fi.git                  = ARGV.git?
-    fi.link_keg           ||= keg_was_linked if keg_had_linked_opt
-    fi.build_from_source    = true if build_from_source
+    fi = FormulaInstaller.new(
+      formula,
+      **{
+        options:                    options,
+        link_keg:                   keg_had_linked_opt ? keg_was_linked : nil,
+        installed_as_dependency:    tab&.installed_as_dependency,
+        installed_on_request:       installed_on_request || tab&.installed_on_request,
+        build_bottle:               tab&.built_bottle?,
+        force_bottle:               force_bottle,
+        build_from_source_formulae: build_from_source_formulae,
+        git:                        git,
+        interactive:                interactive,
+        keep_tmp:                   keep_tmp,
+        force:                      force,
+        debug:                      debug,
+        quiet:                      quiet,
+        verbose:                    verbose,
+      }.compact,
+    )
     fi.prelude
+    fi.fetch
 
-    oh1 "Reinstalling #{Formatter.identifier(f.full_name)} #{options.to_a.join " "}"
+    oh1 "Reinstalling #{Formatter.identifier(formula.full_name)} #{options.to_a.join " "}"
 
     fi.install
     fi.finish
   rescue FormulaInstallationAlreadyAttemptedError
     nil
   rescue Exception # rubocop:disable Lint/RescueException
-    ignore_interrupts { restore_backup(keg, keg_was_linked) }
+    ignore_interrupts { restore_backup(keg, keg_was_linked, verbose: verbose) }
     raise
   else
-    backup_path(keg).rmtree if backup_path(keg).exist?
+    begin
+      backup_path(keg).rmtree if backup_path(keg).exist?
+    rescue Errno::EACCES, Errno::ENOTEMPTY
+      odie <<~EOS
+        Could not remove #{backup_path(keg).parent.basename} backup keg! Do so manually:
+          sudo rm -rf #{backup_path(keg)}
+      EOS
+    end
   end
 
   def backup(keg)
     keg.unlink
-    keg.rename backup_path(keg)
+    begin
+      keg.rename backup_path(keg)
+    rescue Errno::EACCES, Errno::ENOTEMPTY
+      odie <<~EOS
+        Could not rename #{keg.name} keg! Check/fix its permissions:
+          sudo chown -R $(whoami) #{keg}
+      EOS
+    end
   end
 
-  def restore_backup(keg, keg_was_linked)
+  def restore_backup(keg, keg_was_linked, verbose:)
     path = backup_path(keg)
 
     return unless path.directory?
@@ -54,7 +97,7 @@ module Homebrew
     Pathname.new(keg).rmtree if keg.exist?
 
     path.rename keg
-    keg.link if keg_was_linked
+    keg.link(verbose: verbose) if keg_was_linked
   end
 
   def backup_path(path)

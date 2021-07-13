@@ -1,6 +1,10 @@
+# typed: true
+# frozen_string_literal: true
+
 require_relative "directory"
 
 module UnpackStrategy
+  # Strategy for unpacking Subversion repositories.
   class Subversion < Directory
     using Magic
 

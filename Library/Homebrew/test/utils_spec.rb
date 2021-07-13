@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe "globally-scoped helper methods" do
   let(:dir) { mktmpdir }
 
@@ -25,14 +28,14 @@ describe "globally-scoped helper methods" do
   end
 
   describe "#pretty_installed" do
-    subject { pretty_installed("foo") }
+    subject(:pretty_installed_output) { pretty_installed("foo") }
 
     context "when $stdout is a TTY" do
       before { allow($stdout).to receive(:tty?).and_return(true) }
 
       context "with HOMEBREW_NO_EMOJI unset" do
         it "returns a string with a colored checkmark" do
-          expect(subject)
+          expect(pretty_installed_output)
             .to match(/#{esc 1}foo #{esc 32}✔#{esc 0}/)
         end
       end
@@ -41,7 +44,7 @@ describe "globally-scoped helper methods" do
         before { ENV["HOMEBREW_NO_EMOJI"] = "1" }
 
         it "returns a string with colored info" do
-          expect(subject)
+          expect(pretty_installed_output)
             .to match(/#{esc 1}foo \(installed\)#{esc 0}/)
         end
       end
@@ -51,20 +54,20 @@ describe "globally-scoped helper methods" do
       before { allow($stdout).to receive(:tty?).and_return(false) }
 
       it "returns plain text" do
-        expect(subject).to eq("foo")
+        expect(pretty_installed_output).to eq("foo")
       end
     end
   end
 
   describe "#pretty_uninstalled" do
-    subject { pretty_uninstalled("foo") }
+    subject(:pretty_uninstalled_output) { pretty_uninstalled("foo") }
 
     context "when $stdout is a TTY" do
       before { allow($stdout).to receive(:tty?).and_return(true) }
 
       context "with HOMEBREW_NO_EMOJI unset" do
         it "returns a string with a colored checkmark" do
-          expect(subject)
+          expect(pretty_uninstalled_output)
             .to match(/#{esc 1}foo #{esc 31}✘#{esc 0}/)
         end
       end
@@ -73,7 +76,7 @@ describe "globally-scoped helper methods" do
         before { ENV["HOMEBREW_NO_EMOJI"] = "1" }
 
         it "returns a string with colored info" do
-          expect(subject)
+          expect(pretty_uninstalled_output)
             .to match(/#{esc 1}foo \(uninstalled\)#{esc 0}/)
         end
       end
@@ -83,7 +86,7 @@ describe "globally-scoped helper methods" do
       before { allow($stdout).to receive(:tty?).and_return(false) }
 
       it "returns plain text" do
-        expect(subject).to eq("foo")
+        expect(pretty_uninstalled_output).to eq("foo")
       end
     end
   end
@@ -207,6 +210,19 @@ describe "globally-scoped helper methods" do
     end
   end
 
+  specify "#parse_author!" do
+    parse_error_msg = /Unable to parse name and email/
+
+    expect(parse_author!("John Doe <john.doe@example.com>"))
+      .to eq({ name: "John Doe", email: "john.doe@example.com" })
+    expect { parse_author!("") }
+      .to raise_error(parse_error_msg)
+    expect { parse_author!("John Doe") }
+      .to raise_error(parse_error_msg)
+    expect { parse_author!("<john.doe@example.com>") }
+      .to raise_error(parse_error_msg)
+  end
+
   specify "#disk_usage_readable" do
     expect(disk_usage_readable(1)).to eq("1B")
     expect(disk_usage_readable(1000)).to eq("1000B")
@@ -251,7 +267,7 @@ describe "globally-scoped helper methods" do
         )
       }.to raise_error(
         MethodDeprecatedError,
-        %r{method.*replacement.*homebrew/core.*\/Taps\/homebrew\/homebrew-core\/}m,
+        %r{method.*replacement.*homebrew/core.*/Taps/homebrew/homebrew-core/}m,
       )
     end
   end

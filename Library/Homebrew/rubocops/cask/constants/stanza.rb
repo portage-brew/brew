@@ -1,10 +1,15 @@
+# typed: true
+# frozen_string_literal: true
+
 module RuboCop
   module Cask
-    # Constants available globally for use in all Cask cops.
+    # Constants available globally for use in all cask cops.
     module Constants
       STANZA_GROUPS = [
         [:version, :sha256],
-        [:url, :appcast, :name, :homepage],
+        [:language],
+        [:url, :appcast, :name, :desc, :homepage],
+        [:livecheck],
         [
           :auto_updates,
           :conflicts_with,
@@ -17,6 +22,7 @@ module RuboCop
           :pkg,
           :installer,
           :binary,
+          :manpage,
           :colorpicker,
           :dictionary,
           :font,
@@ -24,10 +30,12 @@ module RuboCop
           :internet_plugin,
           :prefpane,
           :qlplugin,
+          :mdimporter,
           :screen_saver,
           :service,
           :audio_unit_plugin,
           :vst_plugin,
+          :vst3_plugin,
           :artifact,
           :stage_only,
         ],

@@ -1,9 +1,13 @@
+# typed: false
+# frozen_string_literal: true
+
 require "hardware"
 
 describe Hardware::CPU do
   describe "::type" do
     let(:cpu_types) {
       [
+        :arm,
         :intel,
         :ppc,
         :dunno,
@@ -18,17 +22,43 @@ describe Hardware::CPU do
   describe "::family" do
     let(:cpu_families) {
       [
+        :amd_k7,
+        :amd_k8,
+        :amd_k8_k10_hybrid,
+        :amd_k10,
+        :amd_k12,
+        :arm,
+        :arm_firestorm_icestorm,
+        :arm_hurricane_zephyr,
+        :arm_lightning_thunder,
+        :arm_monsoon_mistral,
+        :arm_twister,
+        :arm_typhoon,
+        :arm_vortex_tempest,
+        :atom,
+        :bobcat,
+        :broadwell,
+        :bulldozer,
+        :cannonlake,
         :core,
         :core2,
-        :penryn,
-        :nehalem,
-        :arrandale,
-        :sandybridge,
-        :ivybridge,
+        :dothan,
         :haswell,
-        :broadwell,
-        :skylake,
+        :icelake,
+        :ivybridge,
+        :jaguar,
         :kabylake,
+        :merom,
+        :nehalem,
+        :penryn,
+        :ppc,
+        :prescott,
+        :presler,
+        :sandybridge,
+        :skylake,
+        :westmere,
+        :zen,
+        :zen3,
         :dunno,
       ]
     }
@@ -36,79 +66,28 @@ describe Hardware::CPU do
     it "returns the current CPU's family name as a symbol, or :dunno if it cannot be detected" do
       expect(cpu_families).to include described_class.family
     end
-  end
 
-  describe "::can_run?" do
-    subject { described_class }
-
-    matcher :be_able_to_run do |arch|
-      match do |expected|
-        allow(expected).to receive(:type).and_return type
-        allow(expected).to receive(:bits).and_return bits
-
-        expect(expected.can_run?(arch)).to be true
+    context "when hw.cpufamily is 0x573b5eec on a Mac", :needs_macos do
+      before do
+        allow(described_class)
+          .to receive(:sysctl_int)
+          .with("hw.cpufamily")
+          .and_return(0x573b5eec)
       end
-    end
 
-    let(:type) { described_class.type }
-    let(:bits) { described_class.bits }
+      it "returns :arm_firestorm_icestorm on ARM" do
+        allow(described_class).to receive(:arm?).and_return(true)
+        allow(described_class).to receive(:intel?).and_return(false)
 
-    before do
-      allow(described_class).to receive(:type).and_return type
-      allow(described_class).to receive(:bits).and_return bits
-    end
+        expect(described_class.family).to eq(:arm_firestorm_icestorm)
+      end
 
-    context "when on an 32-bit Intel machine" do
-      let(:type) { :intel }
-      let(:bits) { 32 }
+      it "returns :westmere on Intel" do
+        allow(described_class).to receive(:arm?).and_return(false)
+        allow(described_class).to receive(:intel?).and_return(true)
 
-      it { is_expected.to be_able_to_run :i386 }
-      it { is_expected.not_to be_able_to_run :x86_64 }
-      it { is_expected.not_to be_able_to_run :ppc32 }
-      it { is_expected.not_to be_able_to_run :ppc64 }
-    end
-
-    context "when on an 64-bit Intel machine" do
-      let(:type) { :intel }
-      let(:bits) { 64 }
-
-      it { is_expected.to be_able_to_run :i386 }
-      it { is_expected.to be_able_to_run :x86_64 }
-      it { is_expected.not_to be_able_to_run :ppc32 }
-      it { is_expected.not_to be_able_to_run :ppc64 }
-    end
-
-    context "when on a 32-bit PowerPC machine" do
-      let(:type) { :ppc }
-      let(:bits) { 32 }
-
-      it { is_expected.not_to be_able_to_run :i386 }
-      it { is_expected.not_to be_able_to_run :x86_64 }
-      it { is_expected.to be_able_to_run :ppc32 }
-      it { is_expected.not_to be_able_to_run :ppc64 }
-    end
-
-    context "when on a 64-bit PowerPC machine" do
-      let(:type) { :ppc }
-      let(:bits) { 64 }
-
-      it { is_expected.not_to be_able_to_run :i386 }
-      it { is_expected.not_to be_able_to_run :x86_64 }
-      it { is_expected.to be_able_to_run :ppc32 }
-      it { is_expected.to be_able_to_run :ppc64 }
-    end
-
-    context "when the CPU type is unknown" do
-      let(:type) { :dunno }
-
-      it { is_expected.not_to be_able_to_run :i386 }
-      it { is_expected.not_to be_able_to_run :x86_64 }
-      it { is_expected.not_to be_able_to_run :ppc32 }
-      it { is_expected.not_to be_able_to_run :ppc64 }
-    end
-
-    context "when the architecture is unknown" do
-      it { is_expected.not_to be_able_to_run :blah }
+        expect(described_class.family).to eq(:westmere)
+      end
     end
   end
 end

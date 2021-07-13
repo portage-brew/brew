@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "formula"
 
 describe Formula do
@@ -19,7 +22,7 @@ describe Formula do
       end
     end
 
-    it "cant override the `brew` method" do
+    it "can't override the `brew` method" do
       expect {
         formula do
           def brew; end
@@ -66,17 +69,6 @@ describe Formula do
           version nil
         end
       }.to fail_with_invalid :version
-    end
-
-    specify "devel-only is valid" do
-      f = formula do
-        devel do
-          url "foo"
-          version "1.0"
-        end
-      end
-
-      expect(f).to be_devel
     end
 
     specify "head-only is valid" do

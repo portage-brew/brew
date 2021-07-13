@@ -1,5 +1,11 @@
+# typed: true
+# frozen_string_literal: true
+
 require "fcntl"
 
+# A lock file.
+#
+# @api private
 class LockFile
   attr_reader :path
 
@@ -34,19 +40,25 @@ class LockFile
   private
 
   def create_lockfile
-    return unless @lockfile.nil? || @lockfile.closed?
+    return if @lockfile.present? && !@lockfile.closed?
 
     @lockfile = @path.open(File::RDWR | File::CREAT)
     @lockfile.fcntl(Fcntl::F_SETFD, Fcntl::FD_CLOEXEC)
   end
 end
 
+# A lock file for a formula.
+#
+# @api private
 class FormulaLock < LockFile
   def initialize(name)
     super("#{name}.formula")
   end
 end
 
+# A lock file for a cask.
+#
+# @api private
 class CaskLock < LockFile
   def initialize(name)
     super("#{name}.cask")

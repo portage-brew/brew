@@ -1,9 +1,16 @@
+# typed: true
+# frozen_string_literal: true
+
 require_relative "uncompressed"
 
 module UnpackStrategy
+  # Strategy for unpacking Microsoft Office documents.
   class MicrosoftOfficeXml < Uncompressed
+    extend T::Sig
+
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [
         ".doc", ".docx",

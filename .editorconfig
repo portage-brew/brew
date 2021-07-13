@@ -12,9 +12,14 @@ insert_final_newline = true
 [{Library/Homebrew/**.rb,.simplecov}]
 trim_trailing_whitespace = true
 
-[Library/Taps/homebrew/**.rb]
+[Library/Taps/**.rb]
 # trailing whitespace is crucial for patches
 trim_trailing_whitespace = false
+
+[**.drawio.svg]
+indent_size = unset
+indent_style = unset
+insert_final_newline = false
 
 [**.md]
 trim_trailing_whitespace = true

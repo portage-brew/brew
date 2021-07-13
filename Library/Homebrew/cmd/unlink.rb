@@ -1,54 +1,44 @@
-#:  * `unlink` [`--dry-run`] <formula>:
-#:    Remove symlinks for <formula> from the Homebrew prefix. This can be useful
-#:    for temporarily disabling a formula:
-#:    `brew unlink` <formula> `&&` <commands> `&& brew link` <formula>
-#:
-#:    If `--dry-run` or `-n` is passed, Homebrew will list all files which would
-#:    be unlinked, but will not actually unlink or delete any files.
+# typed: true
+# frozen_string_literal: true
 
 require "ostruct"
-require "cli_parser"
+require "cli/parser"
+require "unlink"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def unlink_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `unlink` [<options>] <formula>
-
-        Remove symlinks for <formula> from the Homebrew prefix. This can be useful
+      description <<~EOS
+        Remove symlinks for <formula> from Homebrew's prefix. This can be useful
         for temporarily disabling a formula:
         `brew unlink` <formula> `&&` <commands> `&& brew link` <formula>
       EOS
       switch "-n", "--dry-run",
-        description: "List all files which would be unlinked, but will  not actually unlink or "\
-                     "delete any files."
-      switch :verbose
-      switch :debug
+             description: "List files which would be unlinked without actually unlinking or "\
+                          "deleting any files."
+
+      named_args :installed_formula, min: 1
     end
   end
 
   def unlink
-    unlink_args.parse
+    args = unlink_args.parse
 
-    raise KegUnspecifiedError if args.remaining.empty?
+    options = { dry_run: args.dry_run?, verbose: args.verbose? }
 
-    mode = OpenStruct.new
-    mode.dry_run = true if args.dry_run?
-
-    ARGV.kegs.each do |keg|
-      if mode.dry_run
+    args.named.to_default_kegs.each do |keg|
+      if args.dry_run?
         puts "Would remove:"
-        keg.unlink(mode)
+        keg.unlink(**options)
         next
       end
 
-      keg.lock do
-        print "Unlinking #{keg}... "
-        puts if args.verbose?
-        puts "#{keg.unlink(mode)} symlinks removed"
-      end
+      Unlink.unlink(keg, dry_run: args.dry_run?, verbose: args.verbose?)
     end
   end
 end

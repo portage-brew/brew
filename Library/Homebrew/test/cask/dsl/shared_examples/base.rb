@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "cask/dsl/base"
 
 shared_examples Cask::DSL::Base do

@@ -1,5 +1,12 @@
-describe "brew edit", :integration_test do
-  it "opens a given Formula in an editor" do
+# typed: false
+# frozen_string_literal: true
+
+require "cmd/shared_examples/args_parse"
+
+describe "brew edit" do
+  it_behaves_like "parseable arguments"
+
+  it "opens a given Formula in an editor", :integration_test do
     HOMEBREW_REPOSITORY.cd do
       system "git", "init"
     end

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "locale"
 
 describe Locale do
@@ -13,7 +16,7 @@ describe Locale do
       expect(described_class.parse("es-419")).to eql(described_class.new("es", "419", nil))
     end
 
-    context "raises a ParserError when given" do
+    describe "raises a ParserError when given" do
       it "an empty string" do
         expect { described_class.parse("") }.to raise_error(Locale::ParserError)
       end
@@ -24,6 +27,9 @@ describe Locale do
         expect { described_class.parse("zh-CN_Hans") }.to raise_error(Locale::ParserError)
         expect { described_class.parse("zhCN") }.to raise_error(Locale::ParserError)
         expect { described_class.parse("zh_Hans") }.to raise_error(Locale::ParserError)
+        expect { described_class.parse("zh-") }.to raise_error(Locale::ParserError)
+        expect { described_class.parse("ZH-CN") }.to raise_error(Locale::ParserError)
+        expect { described_class.parse("zh-cn") }.to raise_error(Locale::ParserError)
       end
     end
   end
@@ -52,14 +58,14 @@ describe Locale do
   end
 
   describe "#eql?" do
-    subject { described_class.new("zh", "CN", "Hans") }
+    subject(:locale) { described_class.new("zh", "CN", "Hans") }
 
-    context "all parts match" do
+    context "when all parts match" do
       it { is_expected.to eql("zh-CN-Hans") }
-      it { is_expected.to eql(subject) }
+      it { is_expected.to eql(locale) }
     end
 
-    context "only some parts match" do
+    context "when only some parts match" do
       it { is_expected.not_to eql("zh") }
       it { is_expected.not_to eql("zh-CN") }
       it { is_expected.not_to eql("CN") }
@@ -68,8 +74,8 @@ describe Locale do
     end
 
     it "does not raise if 'other' cannot be parsed" do
-      expect { subject.eql?("zh_CN_Hans") }.not_to raise_error
-      expect(subject.eql?("zh_CN_Hans")).to be false
+      expect { locale.eql?("zh_CN_Hans") }.not_to raise_error
+      expect(locale.eql?("zh_CN_Hans")).to be false
     end
   end
 

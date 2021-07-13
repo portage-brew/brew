@@ -1,10 +1,7 @@
-require_relative "shared_examples/requires_cask_token"
-require_relative "shared_examples/invalid_option"
+# typed: false
+# frozen_string_literal: true
 
 describe Cask::Cmd::Zap, :cask do
-  it_behaves_like "a command that requires a Cask token"
-  it_behaves_like "a command that handles invalid options"
-
   it "shows an error when a bad Cask is provided" do
     expect { described_class.run("notacask") }
       .to raise_error(Cask::CaskUnavailableError, /is unavailable/)
@@ -23,8 +20,8 @@ describe Cask::Cmd::Zap, :cask do
     described_class.run("local-caffeine", "local-transmission")
 
     expect(caffeine).not_to be_installed
-    expect(Cask::Config.global.appdir.join("Caffeine.app")).not_to be_a_symlink
+    expect(caffeine.config.appdir.join("Caffeine.app")).not_to be_a_symlink
     expect(transmission).not_to be_installed
-    expect(Cask::Config.global.appdir.join("Transmission.app")).not_to be_a_symlink
+    expect(transmission.config.appdir.join("Transmission.app")).not_to be_a_symlink
   end
 end

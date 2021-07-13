@@ -1,130 +1,208 @@
-#:  * `create` [`--autotools`|`--cmake`|`--meson`] [`--no-fetch`] [`--set-name` <name>] [`--set-version` <version>] [`--tap` <user>`/`<repo>] <URL>:
-#:    Generate a formula for the downloadable file at <URL> and open it in the editor.
-#:    Homebrew will attempt to automatically derive the formula name
-#:    and version, but if it fails, you'll have to make your own template. The `wget`
-#:    formula serves as a simple example. For the complete API, see:
-#:    <https://www.rubydoc.info/github/Homebrew/brew/master/Formula>
-#:
-#:    If `--autotools` is passed, create a basic template for an Autotools-style build.
-#:    If `--cmake` is passed, create a basic template for a CMake-style build.
-#:    If `--meson` is passed, create a basic template for a Meson-style build.
-#:
-#:    If `--no-fetch` is passed, Homebrew will not download <URL> to the cache and
-#:    will thus not add the SHA-256 to the formula for you, nor will it check
-#:    the GitHub API for GitHub projects (to fill out its description and homepage).
-#:
-#:    The options `--set-name` and `--set-version` each take an argument and allow
-#:    you to explicitly set the name and version of the package you are creating.
-#:
-#:    The option `--tap` takes a tap as its argument and generates the formula in
-#:    the specified tap.
+# typed: false
+# frozen_string_literal: true
 
 require "formula"
 require "formula_creator"
 require "missing_formula"
-require "cli_parser"
+require "cli/parser"
+require "utils/pypi"
+require "cask/cask_loader"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def create_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `create` [<options>] <URL>
-
-        Generate a formula for the downloadable file at <URL> and open it in the editor.
-        Homebrew will attempt to automatically derive the formula name and version, but
-        if it fails, you'll have to make your own template. The `wget` formula serves as
-        a simple example. For the complete API, see:
-        <http://www.rubydoc.info/github/Homebrew/brew/master/Formula>
+      description <<~EOS
+        Generate a formula or, with `--cask`, a cask for the downloadable file at <URL>
+        and open it in the editor. Homebrew will attempt to automatically derive the
+        formula name and version, but if it fails, you'll have to make your own template.
+        The `wget` formula serves as a simple example. For the complete API, see:
+        <https://rubydoc.brew.sh/Formula>
       EOS
       switch "--autotools",
-        description: "Create a basic template for an Autotools-style build."
+             description: "Create a basic template for an Autotools-style build."
+      switch "--cask",
+             description: "Create a basic template for a cask."
       switch "--cmake",
-        description: "Create a basic template for a CMake-style build."
+             description: "Create a basic template for a CMake-style build."
+      switch "--crystal",
+             description: "Create a basic template for a Crystal build."
+      switch "--go",
+             description: "Create a basic template for a Go build."
       switch "--meson",
-        description: "Create a basic template for a Meson-style build."
+             description: "Create a basic template for a Meson-style build."
+      switch "--node",
+             description: "Create a basic template for a Node build."
+      switch "--perl",
+             description: "Create a basic template for a Perl build."
+      switch "--python",
+             description: "Create a basic template for a Python build."
+      switch "--ruby",
+             description: "Create a basic template for a Ruby build."
+      switch "--rust",
+             description: "Create a basic template for a Rust build."
       switch "--no-fetch",
-        description: "Homebrew will not download <URL> to the cache and will thus not add the SHA-256 "\
-                     "to the formula for you, nor will it check the GitHub API for GitHub projects "\
-                     "(to fill out its description and homepage)."
+             description: "Homebrew will not download <URL> to the cache and will thus not add its SHA-256 "\
+                          "to the formula for you, nor will it check the GitHub API for GitHub projects "\
+                          "(to fill out its description and homepage)."
       switch "--HEAD",
-        description: "Indicate that <URL> points to the package's repository rather than a file."
+             description: "Indicate that <URL> points to the package's repository rather than a file."
       flag   "--set-name=",
-        description: "Set the name of the new formula to the provided <name>."
+             description: "Explicitly set the <name> of the new formula or cask."
       flag   "--set-version=",
-        description: "Set the version of the new formula to the provided <version>."
+             description: "Explicitly set the <version> of the new formula or cask."
+      flag   "--set-license=",
+             description: "Explicitly set the <license> of the new formula."
       flag   "--tap=",
-        description: "Generate the new formula in the provided tap, specified as <user>`/`<repo>."
-      switch :force
-      switch :verbose
-      switch :debug
+             description: "Generate the new formula within the given tap, specified as <user>`/`<repo>."
+      switch "-f", "--force",
+             description: "Ignore errors for disallowed formula names and names that shadow aliases."
+
+      conflicts "--autotools", "--cmake", "--crystal", "--go", "--meson", "--node",
+                "--perl", "--python", "--ruby", "--rust", "--cask"
+      conflicts "--cask", "--HEAD"
+      conflicts "--cask", "--set-license"
+
+      named_args :url, number: 1
     end
   end
 
-  # Create a formula from a tarball URL
+  # Create a formula from a tarball URL.
   def create
-    create_args.parse
+    args = create_args.parse
 
-    raise UsageError if ARGV.named.empty?
+    path = if args.cask?
+      create_cask(args: args)
+    else
+      create_formula(args: args)
+    end
 
-    # Ensure that the cache exists so we can fetch the tarball
-    HOMEBREW_CACHE.mkpath
+    exec_editor path
+  end
 
-    url = ARGV.named.first # Pull the first (and only) url from ARGV
+  def create_cask(args:)
+    raise UsageError, "The `--set-name` flag is required for creating casks." if args.set_name.blank?
 
-    version = args.set_version
+    url = args.named.first
     name = args.set_name
-    tap = args.tap
+    token = Cask::Utils.token_from(args.set_name)
 
-    fc = FormulaCreator.new
-    fc.name = name
-    fc.version = version
-    fc.tap = Tap.fetch(tap || "homebrew/core")
-    raise TapUnavailableError, tap unless fc.tap.installed?
+    cask_tap = Tap.fetch(args.tap || "homebrew/cask")
+    raise TapUnavailableError, args.tap unless cask_tap.installed?
 
-    fc.url = url
+    cask_path = Cask::CaskLoader.path("#{cask_tap}/#{token}")
+    cask_path.dirname.mkpath unless cask_path.dirname.exist?
+    raise Cask::CaskAlreadyCreatedError, token if cask_path.exist?
 
-    fc.mode = if args.cmake?
-      :cmake
-    elsif args.autotools?
+    version = if args.set_version
+      Version.create(args.set_version)
+    else
+      Version.detect(url.gsub(token, "").gsub(/x86(_64)?/, ""))
+    end
+
+    interpolated_url, sha256 = if version.null?
+      [url, ""]
+    else
+      sha256 = if args.no_fetch?
+        ""
+      else
+        strategy = DownloadStrategyDetector.detect(url)
+        downloader = strategy.new(url, token, version.to_s, cache: Cask::Cache.path)
+        downloader.fetch
+        downloader.cached_location.sha256
+      end
+
+      [url.gsub(version.to_s, "\#{version}"), sha256]
+    end
+
+    cask_path.atomic_write <<~RUBY
+      cask "#{token}" do
+        version "#{version}"
+        sha256 "#{sha256}"
+
+        url "#{interpolated_url}"
+        name "#{name}"
+        desc ""
+        homepage ""
+
+        app ""
+      end
+    RUBY
+
+    puts "Please run `brew audit --cask --new #{token}` before submitting, thanks."
+    cask_path
+  end
+
+  def create_formula(args:)
+    fc = FormulaCreator.new(args)
+    fc.name = args.set_name
+    fc.version = args.set_version
+    fc.license = args.set_license
+    fc.tap = Tap.fetch(args.tap || "homebrew/core")
+    raise TapUnavailableError, args.tap unless fc.tap.installed?
+
+    fc.url = args.named.first # Pull the first (and only) URL from ARGV
+
+    fc.mode = if args.autotools?
       :autotools
+    elsif args.cmake?
+      :cmake
+    elsif args.crystal?
+      :crystal
+    elsif args.go?
+      :go
     elsif args.meson?
       :meson
+    elsif args.node?
+      :node
+    elsif args.perl?
+      :perl
+    elsif args.python?
+      :python
+    elsif args.ruby?
+      :ruby
+    elsif args.rust?
+      :rust
     end
 
     if fc.name.nil? || fc.name.strip.empty?
-      stem = Pathname.new(url).stem
+      stem = Pathname.new(fc.url).stem.rpartition("=").last
       print "Formula name [#{stem}]: "
       fc.name = __gets || stem
       fc.update_path
     end
 
-    # Don't allow blacklisted formula, or names that shadow aliases,
+    # Check for disallowed formula, or names that shadow aliases,
     # unless --force is specified.
     unless args.force?
-      if reason = MissingFormula.blacklisted_reason(fc.name)
-        raise <<~EOS
-          #{fc.name} is blacklisted for creation.
+      if (reason = MissingFormula.disallowed_reason(fc.name))
+        odie <<~EOS
+          The formula '#{fc.name}' is not allowed to be created.
           #{reason}
-          If you really want to create this formula use --force.
+          If you really want to create this formula use `--force`.
         EOS
       end
 
       if Formula.aliases.include? fc.name
         realname = Formulary.canonical_name(fc.name)
-        raise <<~EOS
-          The formula #{realname} is already aliased to #{fc.name}
+        odie <<~EOS
+          The formula '#{realname}' is already aliased to '#{fc.name}'.
           Please check that you are not creating a duplicate.
-          To force creation use --force.
+          To force creation use `--force`.
         EOS
       end
     end
 
     fc.generate!
 
-    puts "Please `brew audit --new-formula #{fc.name}` before submitting, thanks."
-    exec_editor fc.path
+    PyPI.update_python_resources! Formula[fc.name], ignore_non_pypi_packages: true if args.python?
+
+    puts "Please run `brew audit --new #{fc.name}` before submitting, thanks."
+    fc.path
   end
 
   def __gets

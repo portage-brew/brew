@@ -1,14 +1,24 @@
+# typed: false
+# frozen_string_literal: true
+
 require "version"
 
+# Combination of a version and a revision.
+#
+# @api private
 class PkgVersion
   include Comparable
+  extend Forwardable
 
-  RX = /\A(.+?)(?:_(\d+))?\z/.freeze
+  REGEX = /\A(.+?)(?:_(\d+))?\z/.freeze
+  private_constant :REGEX
 
   attr_reader :version, :revision
 
+  delegate [:major, :minor, :patch, :major_minor, :major_minor_patch] => :version
+
   def self.parse(path)
-    _, version, revision = *path.match(RX)
+    _, version, revision = *path.match(REGEX)
     version = Version.create(version)
     new(version, revision.to_i)
   end
@@ -34,7 +44,10 @@ class PkgVersion
   def <=>(other)
     return unless other.is_a?(PkgVersion)
 
-    (version <=> other.version).nonzero? || revision <=> other.revision
+    version_comparison = (version <=> other.version)
+    return if version_comparison.nil?
+
+    version_comparison.nonzero? || revision <=> other.revision
   end
   alias eql? ==
 

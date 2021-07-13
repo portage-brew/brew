@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "unpack_strategy"
 
 shared_examples "UnpackStrategy::detect" do

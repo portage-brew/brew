@@ -1,6 +1,9 @@
+# typed: false
+# frozen_string_literal: true
+
 require "tempfile"
 require "utils/shell"
-require "os/linux/diagnostic"
+require "hardware"
 require "os/linux/glibc"
 require "os/linux/kernel"
 
@@ -11,6 +14,7 @@ module Homebrew
         %w[
           check_glibc_minimum_version
           check_kernel_minimum_version
+          check_supported_architecture
         ].freeze
       end
 
@@ -34,7 +38,7 @@ module Homebrew
         f.close
         return if system f.path
 
-        <<~EOS.undent
+        <<~EOS
           The directory #{HOMEBREW_TEMP} does not permit executing
           programs. It is likely mounted as "noexec". Please set HOMEBREW_TEMP
           in your #{shell_profile} to a different directory, for example:
@@ -54,7 +58,7 @@ module Homebrew
           this variable set to include other locations.
           Some programs like `vapigen` may not work correctly.
           Consider adding Homebrew's share directory to XDG_DATA_DIRS like so:
-            #{Utils::Shell.prepend_variable_in_profile("XDG_DATA_DIRS", HOMEBREW_PREFIX/"share")}
+            echo 'export XDG_DATA_DIRS="#{HOMEBREW_PREFIX}/share:$XDG_DATA_DIRS"' >> #{shell_profile}
         EOS
       end
 
@@ -63,9 +67,19 @@ module Homebrew
 
         <<~EOS
           umask is currently set to 000. Directories created by Homebrew cannot
-          be world-writable. This issue can be resolved by adding umask 002 to
-          your #{shell_profile}
+          be world-writable. This issue can be resolved by adding "umask 002" to
+          your #{shell_profile}:
             echo 'umask 002' >> #{shell_profile}
+        EOS
+      end
+
+      def check_supported_architecture
+        return if Hardware::CPU.arch == :x86_64
+
+        <<~EOS
+          Your CPU architecture (#{Hardware::CPU.arch}) is not supported. We only support
+          x86_64 CPU architectures. You will be unable to use binary packages (bottles).
+          #{please_create_pull_requests}
         EOS
       end
 
@@ -86,7 +100,7 @@ module Homebrew
         return unless OS::Linux::Kernel.below_minimum_version?
 
         <<~EOS
-          Your Linux kernel #{OS::Linux::Kernel.version} is too old.
+          Your Linux kernel #{OS.kernel_version} is too old.
           We only support kernel #{OS::Linux::Kernel.minimum_version} or later.
           You will be unable to use binary packages (bottles).
           #{please_create_pull_requests}

@@ -1,9 +1,18 @@
+# typed: true
+# frozen_string_literal: true
+
 require "keg"
 require "formula"
 require "linkage_cache_store"
+require "fiddle"
 
+# Check for broken/missing linkage in a formula's keg.
+#
+# @api private
 class LinkageChecker
-  attr_reader :undeclared_deps
+  extend T::Sig
+
+  attr_reader :undeclared_deps, :keg, :formula, :store
 
   def initialize(keg, formula = nil, cache_db:, rebuild_cache: false)
     @keg = keg
@@ -12,6 +21,8 @@ class LinkageChecker
 
     @system_dylibs    = Set.new
     @broken_dylibs    = Set.new
+    @unexpected_broken_dylibs = nil
+    @unexpected_present_dylibs = nil
     @variable_dylibs  = Set.new
     @brewed_dylibs    = Hash.new { |h, k| h[k] = Set.new }
     @reverse_links    = Hash.new { |h, k| h[k] = Set.new }
@@ -52,26 +63,63 @@ class LinkageChecker
   end
 
   def display_test_output(puts_output: true)
-    display_items "Missing libraries", @broken_dylibs, puts_output: puts_output
+    display_items "Missing libraries", broken_dylibs_with_expectations, puts_output: puts_output
+    display_items "Unused missing linkage information", unexpected_present_dylibs, puts_output: puts_output
     display_items "Broken dependencies", @broken_deps, puts_output: puts_output
     display_items "Unwanted system libraries", @unwanted_system_dylibs, puts_output: puts_output
     display_items "Conflicting libraries", @version_conflict_deps, puts_output: puts_output
-    puts "No broken library linkage" unless broken_library_linkage?
   end
 
+  sig { returns(T::Boolean) }
   def broken_library_linkage?
-    !@broken_dylibs.empty? ||
-      !@broken_deps.empty? ||
-      !@unwanted_system_dylibs.empty? ||
-      !@version_conflict_deps.empty?
+    issues = [@broken_deps, @unwanted_system_dylibs, @version_conflict_deps]
+    [issues, unexpected_broken_dylibs, unexpected_present_dylibs].flatten.any?(&:present?)
+  end
+
+  def unexpected_broken_dylibs
+    return @unexpected_broken_dylibs if @unexpected_broken_dylibs
+
+    @unexpected_broken_dylibs = @broken_dylibs.reject do |broken_lib|
+      @formula.class.allowed_missing_libraries.any? do |allowed_missing_lib|
+        case allowed_missing_lib
+        when Regexp
+          allowed_missing_lib.match? broken_lib
+        when String
+          broken_lib.include? allowed_missing_lib
+        end
+      end
+    end
+  end
+
+  def unexpected_present_dylibs
+    @unexpected_present_dylibs ||= @formula.class.allowed_missing_libraries.reject do |allowed_missing_lib|
+      @broken_dylibs.any? do |broken_lib|
+        case allowed_missing_lib
+        when Regexp
+          allowed_missing_lib.match? broken_lib
+        when String
+          broken_lib.include? allowed_missing_lib
+        end
+      end
+    end
+  end
+
+  def broken_dylibs_with_expectations
+    output = {}
+    @broken_dylibs.each do |broken_lib|
+      output[broken_lib] = if unexpected_broken_dylibs.include? broken_lib
+        ["unexpected"]
+      else
+        ["expected"]
+      end
+    end
+    output
   end
 
   private
 
-  attr_reader :keg, :formula, :store
-
   def dylib_to_dep(dylib)
-    dylib =~ %r{#{Regexp.escape(HOMEBREW_PREFIX)}/(opt|Cellar)/([\w+-.@]+)/}
+    dylib =~ %r{#{Regexp.escape(HOMEBREW_PREFIX)}/(opt|Cellar)/([\w+-.@]+)/}o
     Regexp.last_match(2)
   end
 
@@ -123,6 +171,11 @@ class LinkageChecker
 
           if (dep = dylib_to_dep(dylib))
             @broken_deps[dep] |= [dylib]
+          elsif MacOS.version >= :big_sur && dylib_found_via_dlopen(dylib)
+            # If we cannot associate the dylib with a dependency, then it may be a system library.
+            # In macOS Big Sur and later, system libraries do not exist on-disk and instead exist in a cache.
+            # If dlopen finds the dylib, then the linkage is not broken.
+            @system_dylibs << dylib
           else
             @broken_dylibs << dylib
           end
@@ -149,12 +202,18 @@ class LinkageChecker
   end
   alias generic_check_dylibs check_dylibs
 
+  def dylib_found_via_dlopen(dylib)
+    Fiddle.dlopen(dylib).close
+    true
+  rescue Fiddle::DLError
+    false
+  end
+
   def check_formula_deps
     filter_out = proc do |dep|
       next true if dep.build?
-      next false unless dep.optional? || dep.recommended?
 
-      formula.build.without?(dep)
+      (dep.optional? || dep.recommended?) && formula.build.without?(dep)
     end
 
     declared_deps_full_names = formula.deps
@@ -194,7 +253,7 @@ class LinkageChecker
 
     version_hash = {}
     version_conflict_deps = Set.new
-    @brewed_dylibs.keys.each do |l|
+    @brewed_dylibs.each_key do |l|
       name = l.split("/").last
       unversioned_name, = name.split("@")
       version_hash[unversioned_name] ||= Set.new
@@ -210,9 +269,9 @@ class LinkageChecker
 
   def sort_by_formula_full_name!(arr)
     arr.sort! do |a, b|
-      if a.include?("/") && !b.include?("/")
+      if a.include?("/") && b.exclude?("/")
         1
-      elsif !a.include?("/") && b.include?("/")
+      elsif a.exclude?("/") && b.include?("/")
         -1
       else
         a <=> b
@@ -225,14 +284,16 @@ class LinkageChecker
   def harmless_broken_link?(dylib)
     # libgcc_s_* is referenced by programs that use the Java Service Wrapper,
     # and is harmless on x86(_64) machines
-    [
+    return true if [
       "/usr/lib/libgcc_s_ppc64.1.dylib",
       "/opt/local/lib/libgcc/libgcc_s.1.dylib",
     ].include?(dylib)
+
+    dylib.start_with?("/System/Library/Frameworks/")
   end
 
   # Display a list of things.
-  # Things may either be an array, or a hash of (label -> array)
+  # Things may either be an array, or a hash of (label -> array).
   def display_items(label, things, puts_output: true)
     return if things.empty?
 
@@ -245,7 +306,11 @@ class LinkageChecker
       end
     else
       things.sort.each do |item|
-        output += "\n  #{item}"
+        output += if item.is_a? Regexp
+          "\n  #{item.inspect}"
+        else
+          "\n  #{item}"
+        end
       end
     end
     puts output if puts_output

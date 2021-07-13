@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "build_environment"
 
 describe BuildEnvironment do
@@ -40,11 +43,11 @@ describe BuildEnvironment do
   end
 
   describe BuildEnvironment::DSL do
-    subject { double.extend(described_class) }
+    subject(:build_environment_dsl) { double.extend(described_class) }
 
-    context "single argument" do
+    context "with a single argument" do
       before do
-        subject.instance_eval do
+        build_environment_dsl.instance_eval do
           env :userpaths
         end
       end
@@ -52,9 +55,9 @@ describe BuildEnvironment do
       its(:env) { is_expected.to use_userpaths }
     end
 
-    context "multiple arguments" do
+    context "with multiple arguments" do
       before do
-        subject.instance_eval do
+        build_environment_dsl.instance_eval do
           env :userpaths, :std
         end
       end

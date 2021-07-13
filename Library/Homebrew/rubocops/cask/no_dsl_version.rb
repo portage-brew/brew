@@ -1,3 +1,6 @@
+# typed: true
+# frozen_string_literal: true
+
 require "forwardable"
 
 module RuboCop
@@ -15,24 +18,20 @@ module RuboCop
       #   cask 'foo' do
       #     ...
       #   end
-      class NoDslVersion < Cop
+      class NoDslVersion < Base
+        extend T::Sig
+
         extend Forwardable
+        extend AutoCorrector
         include CaskHelp
 
-        MESSAGE = "Use `%{preferred}` instead of `%{current}`".freeze
+        MESSAGE = "Use `%<preferred>s` instead of `%<current>s`"
 
         def on_cask(cask_block)
           @cask_header = cask_block.header
           return unless offense?
 
           offense
-        end
-
-        def autocorrect(method_node)
-          @cask_header = cask_header(method_node)
-          lambda do |corrector|
-            corrector.replace(header_range, preferred_header_str)
-          end
         end
 
         private
@@ -49,10 +48,12 @@ module RuboCop
         end
 
         def offense
-          add_offense(@cask_header.method_node, location: header_range,
-                                                message:  error_msg)
+          add_offense(header_range, message: error_msg) do |corrector|
+            corrector.replace(header_range, preferred_header_str)
+          end
         end
 
+        sig { returns(String) }
         def error_msg
           format(MESSAGE, preferred: preferred_header_str, current: header_str)
         end

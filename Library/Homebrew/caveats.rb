@@ -1,5 +1,11 @@
+# typed: false
+# frozen_string_literal: true
+
 require "language/python"
 
+# A formula's caveats.
+#
+# @api private
 class Caveats
   extend Forwardable
 
@@ -15,14 +21,25 @@ class Caveats
       build = f.build
       f.build = Tab.for_formula(f)
       s = f.caveats.to_s
-      caveats << s.chomp + "\n" unless s.empty?
+      caveats << "#{s.chomp}\n" unless s.empty?
     ensure
       f.build = build
     end
     caveats << keg_only_text
-    caveats << function_completion_caveats(:bash)
-    caveats << function_completion_caveats(:zsh)
-    caveats << function_completion_caveats(:fish)
+
+    valid_shells = [:bash, :zsh, :fish].freeze
+    current_shell = Utils::Shell.preferred || Utils::Shell.parent
+    shells = if current_shell.present? &&
+                (shell_sym = current_shell.to_sym) &&
+                valid_shells.include?(shell_sym)
+      [shell_sym]
+    else
+      valid_shells
+    end
+    shells.each do |shell|
+      caveats << function_completion_caveats(shell)
+    end
+
     caveats << plist_caveats
     caveats << elisp_caveats
     caveats.compact.join("\n")
@@ -40,19 +57,15 @@ class Caveats
         #{f.name} is keg-only, which means it was not symlinked into #{HOMEBREW_PREFIX},
         because #{f.keg_only_reason.to_s.chomp}.
       EOS
-    end
+    end.dup
 
     if f.bin.directory? || f.sbin.directory?
       s << <<~EOS
 
-        If you need to have #{f.name} first in your PATH run:
+        If you need to have #{f.name} first in your PATH, run:
       EOS
-      if f.bin.directory?
-        s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_bin.to_s)}\n"
-      end
-      if f.sbin.directory?
-        s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_sbin.to_s)}\n"
-      end
+      s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_bin.to_s)}\n" if f.bin.directory?
+      s << "  #{Utils::Shell.prepend_path_in_profile(f.opt_sbin.to_s)}\n" if f.sbin.directory?
     end
 
     if f.lib.directory? || f.include.directory?
@@ -61,13 +74,9 @@ class Caveats
         For compilers to find #{f.name} you may need to set:
       EOS
 
-      if f.lib.directory?
-        s << "  #{Utils::Shell.export_value("LDFLAGS", "-L#{f.opt_lib}")}\n"
-      end
+      s << "  #{Utils::Shell.export_value("LDFLAGS", "-L#{f.opt_lib}")}\n" if f.lib.directory?
 
-      if f.include.directory?
-        s << "  #{Utils::Shell.export_value("CPPFLAGS", "-I#{f.opt_include}")}\n"
-      end
+      s << "  #{Utils::Shell.export_value("CPPFLAGS", "-I#{f.opt_include}")}\n" if f.include.directory?
 
       if which("pkg-config", ENV["HOMEBREW_PATH"]) &&
          ((f.lib/"pkgconfig").directory? || (f.share/"pkgconfig").directory?)
@@ -92,11 +101,9 @@ class Caveats
 
   def keg
     @keg ||= [f.prefix, f.opt_prefix, f.linked_keg].map do |d|
-      begin
-        Keg.new(d.resolved_path)
-      rescue
-        nil
-      end
+      Keg.new(d.resolved_path)
+    rescue
+      nil
     end.compact.first
   end
 
@@ -106,7 +113,7 @@ class Caveats
 
     completion_installed = keg.completion_installed?(shell)
     functions_installed = keg.functions_installed?(shell)
-    return unless completion_installed || functions_installed
+    return if !completion_installed && !functions_installed
 
     installed = []
     installed << "completions" if completion_installed
@@ -126,10 +133,10 @@ class Caveats
           #{root_dir}/share/zsh/site-functions
       EOS
     when :fish
-      fish_caveats = "fish #{installed.join(" and ")} have been installed to:"
+      fish_caveats = +"fish #{installed.join(" and ")} have been installed to:"
       fish_caveats << "\n  #{root_dir}/share/fish/vendor_completions.d" if completion_installed
       fish_caveats << "\n  #{root_dir}/share/fish/vendor_functions.d" if functions_installed
-      fish_caveats
+      fish_caveats.freeze
     end
   end
 
@@ -144,7 +151,22 @@ class Caveats
     EOS
   end
 
-  def plist_caveats; end
+  def plist_caveats
+    return if !f.plist_manual && !f.service?
+
+    command = if f.service?
+      f.service.manual_command
+    else
+      f.plist_manual
+    end
+
+    # Default to brew services not being supported. macOS overrides this behavior.
+    <<~EOS
+      #{Formatter.warning("Warning:")} #{f.name} provides a launchd plist which can only be used on macOS!
+      You can manually execute the service instead with:
+        #{command}
+    EOS
+  end
 
   def plist_path
     destination = if f.plist_startup

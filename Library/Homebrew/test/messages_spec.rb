@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "messages"
 require "spec_helper"
 
@@ -61,7 +64,7 @@ describe Messages do
 
       it "prints caveat details" do
         expect { messages.display_messages }.to output(
-          <<~EOS
+          <<~EOS,
             ==> Caveats
             ==> foo
             Zsh completions were installed
@@ -70,25 +73,21 @@ describe Messages do
       end
     end
 
-    context "when the --display-times argument is present" do
-      before do
-        allow(ARGV).to receive(:include?).with("--display-times").and_return(true)
-      end
-
-      context "when install_times is empty" do
-        it "doesn't print any output" do
-          expect { messages.display_messages }.not_to output.to_stdout
+    context "when the `display_times` argument is true" do
+      context "when `install_times` is empty" do
+        it "doesn't print anything" do
+          expect { messages.display_messages(display_times: true) }.not_to output.to_stdout
         end
       end
 
-      context "when install_times is present" do
+      context "when `install_times` is present" do
         before do
           messages.formula_installed(test_formula, elapsed_time)
         end
 
         it "prints installation times" do
-          expect { messages.display_messages }.to output(
-            <<~EOS
+          expect { messages.display_messages(display_times: true) }.to output(
+            <<~EOS,
               ==> Installation times
               foo                       1.100 s
             EOS
@@ -97,11 +96,7 @@ describe Messages do
       end
     end
 
-    context "when the --display-times argument isn't present" do
-      before do
-        allow(ARGV).to receive(:include?).with("--display-times").and_return(false)
-      end
-
+    context "when the `display_times` argument isn't specified" do
       it "doesn't print installation times" do
         expect { messages.display_messages }.not_to output.to_stdout
       end

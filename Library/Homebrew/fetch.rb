@@ -1,14 +1,21 @@
+# typed: true
+# frozen_string_literal: true
+
 module Homebrew
+  # @api private
   module Fetch
-    module_function
+    extend T::Sig
 
-    def fetch_bottle?(f)
-      return true if ARGV.force_bottle? && f.bottle
-      return false unless f.bottle && f.pour_bottle?
-      return false if ARGV.build_formula_from_source?(f)
-      return false unless f.bottle.compatible_cellar?
+    sig { params(f: Formula, args: CLI::Args).returns(T::Boolean) }
+    def fetch_bottle?(f, args:)
+      bottle = f.bottle
 
-      true
+      return true if args.force_bottle? && bottle.present?
+
+      bottle.present? &&
+        f.pour_bottle? &&
+        args.build_from_source_formulae.exclude?(f.full_name) &&
+        bottle.compatible_locations?
     end
   end
 end

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 module Predicable
   def attr_predicate(*attrs)
     attrs.each do |attr|

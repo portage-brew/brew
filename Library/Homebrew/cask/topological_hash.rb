@@ -1,11 +1,18 @@
+# typed: true
+# frozen_string_literal: true
+
 require "tsort"
 
-# a basic topologically sortable hashmap
 module Cask
+  # Topologically sortable hash map.
   class TopologicalHash < Hash
     include TSort
 
-    alias tsort_each_node each_key
+    private
+
+    def tsort_each_node(&block)
+      each_key(&block)
+    end
 
     def tsort_each_child(node, &block)
       fetch(node).each(&block)

@@ -1,5 +1,11 @@
+# typed: false
+# frozen_string_literal: true
+
 require "utils/tty"
 
+# Helper module for formatting output.
+#
+# @api private
 module Formatter
   module_function
 
@@ -31,8 +37,23 @@ module Formatter
     label(label, string, :red)
   end
 
+  # Wraps text to fit within a given number of columns using regular expressions that:
+  #
+  # 1. convert hard-wrapped paragraphs to a single line
+  # 2. add line break and indent to subcommand descriptions
+  # 3. find any option descriptions longer than a pre-set length and wrap between words
+  #    with a hanging indent, without breaking any words that overflow
+  # 4. wrap any remaining description lines that need wrapping with the same indent
+  # 5. wrap all lines to the given width.
+  # @see https://macromates.com/blog/2006/wrapping-text-with-regular-expressions/
   def wrap(s, width = 172)
-    s.gsub(/(.{1,#{width}})(\s+|\Z)/, "\\1\n")
+    desc = OPTION_DESC_WIDTH
+    indent = width - desc
+    s.gsub(/(?<=\S) *\n(?=\S)/, " ")
+     .gsub(/([`>)\]]:) /, "\\1\n    ")
+     .gsub(/^( +-.+  +(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n#{" " * indent}")
+     .gsub(/^( {#{indent}}(?=\S.{#{desc}}))(.{1,#{desc}})( +|$)\n?/, "\\1\\2\n#{" " * indent}")
+     .gsub(/(.{1,#{width}})( +|$)\n?/, "\\1\n")
   end
 
   def url(string)
@@ -81,7 +102,7 @@ module Formatter
 
     gap_string = "".rjust(gap_size)
 
-    output = ""
+    output = +""
 
     rows.times do |row_index|
       item_indices_for_row = row_index.step(objects.size - 1, rows).to_a
@@ -93,9 +114,11 @@ module Formatter
       # don't add trailing whitespace to last column
       last = objects.values_at(item_indices_for_row.last)
 
-      output.concat((first_n + last).join(gap_string)).concat("\n")
+      output.concat((first_n + last)
+            .join(gap_string))
+            .concat("\n")
     end
 
-    output
+    output.freeze
   end
 end

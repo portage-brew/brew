@@ -1,7 +1,22 @@
+# typed: false
+# frozen_string_literal: true
+
+require "system_command"
+
+# Module containing all available strategies for unpacking archives.
+#
+# @api private
 module UnpackStrategy
+  extend T::Sig
+  extend T::Helpers
+
+  include SystemCommand::Mixin
+
+  # Helper module for identifying the file type.
   module Magic
-    # length of the longest regex (currently Tar)
+    # Length of the longest regex (currently Tar).
     MAX_MAGIC_NUMBER_LENGTH = 262
+    private_constant :MAX_MAGIC_NUMBER_LENGTH
 
     refine Pathname do
       def magic_number
@@ -29,18 +44,19 @@ module UnpackStrategy
 
   def self.strategies
     @strategies ||= [
-      Tar, # needs to be before Bzip2/Gzip/Xz/Lzma
+      Tar, # Needs to be before Bzip2/Gzip/Xz/Lzma.
       Pax,
       Gzip,
+      Dmg, # Needs to be before Bzip2/Xz/Lzma.
       Lzma,
       Xz,
       Lzip,
-      Air, # needs to be before Zip
-      Jar, # needs to be before Zip
-      LuaRock, # needs to be before Zip
-      MicrosoftOfficeXml, # needs to be before Zip
+      Air, # Needs to be before `Zip`.
+      Jar, # Needs to be before `Zip`.
+      LuaRock, # Needs to be before `Zip`.
+      MicrosoftOfficeXml, # Needs to be before `Zip`.
       Zip,
-      Pkg, # needs to be before Xar
+      Pkg, # Needs to be before `Xar`.
       Xar,
       Ttf,
       Otf,
@@ -48,10 +64,9 @@ module UnpackStrategy
       Mercurial,
       Subversion,
       Cvs,
-      SelfExtractingExecutable, # needs to be before Cab
+      SelfExtractingExecutable, # Needs to be before `Cab`.
       Cab,
       Executable,
-      Dmg, # needs to be before Bzip2
       Bzip2,
       Fossil,
       Bazaar,
@@ -88,10 +103,10 @@ module UnpackStrategy
     strategies.find { |s| s.can_extract?(path) }
   end
 
-  def self.detect(path, extension_only: false, type: nil, ref_type: nil, ref: nil)
+  def self.detect(path, prioritise_extension: false, type: nil, ref_type: nil, ref: nil, merge_xattrs: nil)
     strategy = from_type(type) if type
 
-    if extension_only
+    if prioritise_extension && path.extname.present?
       strategy ||= from_extension(path.extname)
       strategy ||= strategies.select { |s| s < Directory || s == Fossil }
                              .find { |s| s.can_extract?(path) }
@@ -102,25 +117,31 @@ module UnpackStrategy
 
     strategy ||= Uncompressed
 
-    strategy.new(path, ref_type: ref_type, ref: ref)
+    strategy.new(path, ref_type: ref_type, ref: ref, merge_xattrs: merge_xattrs)
   end
 
-  attr_reader :path
+  attr_reader :path, :merge_xattrs
 
-  def initialize(path, ref_type: nil, ref: nil)
+  def initialize(path, ref_type: nil, ref: nil, merge_xattrs: nil)
     @path = Pathname(path).expand_path
     @ref_type = ref_type
     @ref = ref
+    @merge_xattrs = merge_xattrs
   end
 
-  def extract(to: nil, basename: nil, verbose: false)
+  abstract!
+  sig { abstract.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
+  def extract_to_dir(unpack_dir, basename:, verbose:); end
+  private :extract_to_dir
+
+  def extract(to: nil, basename: nil, verbose: nil)
     basename ||= path.basename
     unpack_dir = Pathname(to || Dir.pwd).expand_path
     unpack_dir.mkpath
-    extract_to_dir(unpack_dir, basename: basename, verbose: verbose)
+    extract_to_dir(unpack_dir, basename: Pathname(basename), verbose: verbose || false)
   end
 
-  def extract_nestedly(to: nil, basename: nil, verbose: false, extension_only: false)
+  def extract_nestedly(to: nil, basename: nil, verbose: false, prioritise_extension: false)
     Dir.mktmpdir do |tmp_unpack_dir|
       tmp_unpack_dir = Pathname(tmp_unpack_dir)
 
@@ -131,9 +152,9 @@ module UnpackStrategy
       if children.count == 1 && !children.first.directory?
         FileUtils.chmod "+rw", children.first, verbose: verbose
 
-        s = UnpackStrategy.detect(children.first, extension_only: extension_only)
+        s = UnpackStrategy.detect(children.first, prioritise_extension: prioritise_extension)
 
-        s.extract_nestedly(to: to, verbose: verbose, extension_only: extension_only)
+        s.extract_nestedly(to: to, verbose: verbose, prioritise_extension: prioritise_extension)
         next
       end
 

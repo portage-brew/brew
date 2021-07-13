@@ -1,11 +1,18 @@
+# typed: false
+# frozen_string_literal: true
+
 require "tempfile"
 
 module UnpackStrategy
+  # Strategy for unpacking disk images.
   class Dmg
+    extend T::Sig
+
     include UnpackStrategy
 
+    # Helper module for listing the contents of a volume mounted from a disk image.
     module Bom
-      DMG_METADATA = Set.new %w[
+      DMG_METADATA = Set.new(%w[
         .background
         .com.apple.timemachine.donotpresent
         .com.apple.timemachine.supported
@@ -17,27 +24,48 @@ module UnpackStrategy
         .TemporaryItems
         .Trashes
         .VolumeIcon.icns
-      ].freeze
+      ]).freeze
       private_constant :DMG_METADATA
 
       refine Pathname do
+        extend T::Sig
+
+        # Check if path is considered disk image metadata.
+        sig { returns(T::Boolean) }
         def dmg_metadata?
           DMG_METADATA.include?(cleanpath.ascend.to_a.last.to_s)
         end
 
-        # symlinks to system directories (commonly to /Applications)
+        # Check if path is a symlink to a system directory (commonly to /Applications).
+        sig { returns(T::Boolean) }
         def system_dir_symlink?
-          symlink? && MacOS.system_dir?(readlink)
+          symlink? && MacOS.system_dir?(dirname.join(readlink))
         end
 
+        sig { returns(String) }
         def bom
-          # rubocop:disable Style/AsciiComments
-          # We need to use `find` here instead of Ruby in order to properly handle
-          # file names containing special characters, such as “e” + “´” vs. “é”.
-          # rubocop:enable Style/AsciiComments
-          system_command("find", args: [".", "-print0"], chdir: self, print_stderr: false)
-            .stdout
-            .split("\0")
+          tries = 0
+          result = loop do
+            # rubocop:disable Style/AsciiComments
+            # We need to use `find` here instead of Ruby in order to properly handle
+            # file names containing special characters, such as “e” + “´” vs. “é”.
+            # rubocop:enable Style/AsciiComments
+            r = system_command("find", args: [".", "-print0"], chdir: self, print_stderr: false)
+            tries += 1
+
+            # Spurious bug on CI, which in most cases can be worked around by retrying.
+            break r unless r.stderr.match?(/Interrupted system call/i)
+
+            raise "Command `#{r.command.shelljoin}` was interrupted." if tries >= 3
+          end
+
+          odebug "Command `#{result.command.shelljoin}` in '#{self}' took #{tries} tries." if tries > 1
+
+          bom_paths = result.stdout.split("\0")
+
+          raise "BOM for path '#{self}' is empty." if bom_paths.empty?
+
+          bom_paths
             .reject { |path| Pathname(path).dmg_metadata? }
             .reject { |path| (self/path).system_dir_symlink? }
             .join("\n")
@@ -46,9 +74,11 @@ module UnpackStrategy
     end
     private_constant :Bom
 
-    using Bom
-
+    # Strategy for unpacking a volume mounted from a disk image.
     class Mount
+      extend T::Sig
+
+      using Bom
       include UnpackStrategy
 
       def eject(verbose: false)
@@ -57,10 +87,27 @@ module UnpackStrategy
         return unless path.exist?
 
         if tries > 1
-          system_command! "diskutil",
-                          args:         ["eject", path],
-                          print_stderr: false,
-                          verbose:      verbose
+          disk_info = system_command!(
+            "diskutil",
+            args:         ["info", "-plist", path],
+            print_stderr: false,
+            verbose:      verbose,
+          )
+
+          # For HFS, just use <mount-path>
+          # For APFS, find the <physical-store> corresponding to <mount-path>
+          eject_paths = disk_info.plist
+                                 .fetch("APFSPhysicalStores", [])
+                                 .map { |store| store["APFSPhysicalStore"] }
+                                 .compact
+                                 .presence || [path]
+
+          eject_paths.each do |eject_path|
+            system_command! "diskutil",
+                            args:         ["eject", eject_path],
+                            print_stderr: false,
+                            verbose:      verbose
+          end
         else
           system_command! "diskutil",
                           args:         ["unmount", "force", path],
@@ -76,6 +123,7 @@ module UnpackStrategy
 
       private
 
+      sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
       def extract_to_dir(unpack_dir, basename:, verbose:)
         Tempfile.open(["", ".bom"]) do |bomfile|
           bomfile.close
@@ -99,23 +147,22 @@ module UnpackStrategy
     end
     private_constant :Mount
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [".dmg"]
     end
 
     def self.can_extract?(path)
-      imageinfo = system_command("hdiutil",
-                                 args:         ["imageinfo", path],
-                                 print_stderr: false).stdout
-
-      !imageinfo.empty?
+      stdout, _, status = system_command("hdiutil", args: ["imageinfo", "-format", path], print_stderr: false)
+      status.success? && !stdout.empty?
     end
 
     private
 
+    sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
     def extract_to_dir(unpack_dir, basename:, verbose:)
       mount(verbose: verbose) do |mounts|
-        raise "No mounts found in '#{path}'; perhaps it is a bad disk image?" if mounts.empty?
+        raise "No mounts found in '#{path}'; perhaps this is a bad disk image?" if mounts.empty?
 
         mounts.each do |mount|
           mount.extract(to: unpack_dir, verbose: verbose)
@@ -130,7 +177,7 @@ module UnpackStrategy
         without_eula = system_command(
           "hdiutil",
           args:         [
-            "attach", "-plist", "-nobrowse", "-readonly", "-noidme",
+            "attach", "-plist", "-nobrowse", "-readonly",
             "-mountrandom", mount_dir, path
           ],
           input:        "qn\n",
@@ -157,15 +204,14 @@ module UnpackStrategy
           with_eula = system_command!(
             "hdiutil",
             args:    [
-              "attach", "-plist", "-nobrowse", "-readonly", "-noidme",
+              "attach", "-plist", "-nobrowse", "-readonly",
               "-mountrandom", mount_dir, cdr_path
             ],
             verbose: verbose,
           )
 
           if verbose && !(eula_text = without_eula.stdout).empty?
-            ohai "Software License Agreement for '#{path}':"
-            puts eula_text
+            ohai "Software License Agreement for '#{path}':", eula_text
           end
 
           with_eula.plist

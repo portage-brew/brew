@@ -1,10 +1,16 @@
+# typed: false
+# frozen_string_literal: true
+
 require "searchable"
 require "description_cache_store"
 
 module Homebrew
+  # Helper module for searching formulae or casks.
+  #
+  # @api private
   module Search
     def query_regexp(query)
-      if m = query.match(%r{^/(.*)/$})
+      if (m = query.match(%r{^/(.*)/$}))
         Regexp.new(m[1])
       else
         query
@@ -28,7 +34,7 @@ module Homebrew
 
       results = { formulae: [], casks: [] }
 
-      return results if ENV["HOMEBREW_NO_GITHUB_API"]
+      return results if Homebrew::EnvConfig.no_github_api?
 
       unless silent
         # Use stderr to avoid breaking parsed output
@@ -42,10 +48,12 @@ module Homebrew
           filename:  query,
           extension: "rb",
         )
-      rescue GitHub::Error => error
-        opoo "Error searching on GitHub: #{error}\n"
-        return results
+      rescue GitHub::API::Error => e
+        opoo "Error searching on GitHub: #{e}\n"
+        nil
       end
+
+      return results if matches.blank?
 
       matches.each do |match|
         name = File.basename(match["path"], ".rb")
@@ -78,6 +86,8 @@ module Homebrew
                 .extend(Searchable)
                 .search(string_or_regex)
                 .sort
+
+      results |= Formula.fuzzy_search(string_or_regex)
 
       results.map do |name|
         formula, canonical_full_name = begin

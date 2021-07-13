@@ -1,36 +1,57 @@
-#:  * `vendor-gems`:
-#:    Install and commit Homebrew's vendored gems.
+# typed: false
+# frozen_string_literal: true
 
 require "formula"
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
-  def vendor_gems
+  sig { returns(CLI::Parser) }
+  def vendor_gems_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `vendor-gems`
-
+      description <<~EOS
         Install and commit Homebrew's vendored gems.
       EOS
-      switch :debug
-    end.parse
+
+      comma_array "--update",
+                  description: "Update all vendored Gems to the latest version."
+
+      named_args :none
+    end
+  end
+
+  sig { void }
+  def vendor_gems
+    args = vendor_gems_args.parse
 
     Homebrew.install_bundler!
 
-    ohai "cd #{HOMEBREW_LIBRARY_PATH}/vendor"
-    (HOMEBREW_LIBRARY_PATH/"vendor").cd do
+    ENV["BUNDLE_WITH"] = "sorbet"
+
+    ohai "cd #{HOMEBREW_LIBRARY_PATH}"
+    HOMEBREW_LIBRARY_PATH.cd do
+      if args.update
+        ohai "bundle update"
+        safe_system "bundle", "update", *args.update
+
+        ohai "git add Gemfile.lock"
+        system "git", "add", "Gemfile.lock"
+      end
+
       ohai "bundle install --standalone"
       safe_system "bundle", "install", "--standalone"
 
-      ohai "git add bundle-standalone"
-      system "git", "add", "bundle-standalone"
+      ohai "bundle pristine"
+      safe_system "bundle", "pristine"
 
-      if Formula["gpg"].installed?
-        ENV["PATH"] = PATH.new(ENV["PATH"])
-                          .prepend(Formula["gpg"].opt_bin)
-      end
+      ohai "git add vendor/bundle"
+      system "git", "add", "vendor/bundle"
+
+      Utils::Git.set_name_email!
+      Utils::Git.setup_gpg!
 
       ohai "git commit"
       system "git", "commit", "--message", "brew vendor-gems: commit updates."

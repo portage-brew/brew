@@ -1,9 +1,14 @@
-# Performs `Formula#mktemp`'s functionality, and tracks the results.
+# typed: false
+# frozen_string_literal: true
+
+# Performs {Formula#mktemp}'s functionality, and tracks the results.
 # Each instance is only intended to be used once.
 class Mktemp
+  extend T::Sig
+
   include FileUtils
 
-  # Path to the tmpdir used in this run, as a Pathname.
+  # Path to the tmpdir used in this run, as a {Pathname}.
   attr_reader :tmpdir
 
   def initialize(prefix = name, opts = {})
@@ -12,27 +17,30 @@ class Mktemp
     @quiet = false
   end
 
-  # Instructs this Mktemp to retain the staged files
+  # Instructs this {Mktemp} to retain the staged files.
+  sig { void }
   def retain!
     @retain = true
   end
 
-  # True if the staged temporary files should be retained
+  # True if the staged temporary files should be retained.
   def retain?
     @retain
   end
 
-  # Instructs this Mktemp to not emit messages when retention is triggered
+  # Instructs this Mktemp to not emit messages when retention is triggered.
+  sig { void }
   def quiet!
     @quiet = true
   end
 
+  sig { returns(String) }
   def to_s
     "[Mktemp: #{tmpdir} retain=#{@retain} quiet=#{@quiet}]"
   end
 
   def run
-    @tmpdir = Pathname.new(Dir.mktmpdir("#{@prefix}-", HOMEBREW_TEMP))
+    @tmpdir = Pathname.new(Dir.mktmpdir("#{@prefix.tr "@", "AT"}-", HOMEBREW_TEMP))
 
     # Make sure files inside the temporary directory have the same group as the
     # brew instance.
@@ -54,12 +62,23 @@ class Mktemp
     begin
       Dir.chdir(tmpdir) { yield self }
     ensure
-      ignore_interrupts { rm_rf(tmpdir) } unless retain?
+      ignore_interrupts { chmod_rm_rf(tmpdir) } unless retain?
     end
   ensure
-    if retain? && !@tmpdir.nil? && !@quiet
-      ohai "Kept temporary files"
-      puts "Temporary files retained at #{@tmpdir}"
+    ohai "Temporary files retained at:", @tmpdir.to_s if retain? && !@tmpdir.nil? && !@quiet
+  end
+
+  private
+
+  def chmod_rm_rf(path)
+    if path.directory? && !path.symlink?
+      chmod("u+rw", path) if path.owned? # Need permissions in order to see the contents
+      path.children.each { |child| chmod_rm_rf(child) }
+      rmdir(path)
+    else
+      rm_f(path)
     end
+  rescue
+    nil # Just skip this directory.
   end
 end

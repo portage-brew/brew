@@ -1,10 +1,13 @@
+# typed: false
+# frozen_string_literal: true
+
 require "cleaner"
 require "formula"
 
 describe Cleaner do
   include FileUtils
 
-  subject { described_class.new(f) }
+  subject(:cleaner) { described_class.new(f) }
 
   let(:f) { formula("cleaner_test") { url "foo-1.0" } }
 
@@ -25,7 +28,7 @@ describe Cleaner do
         cp Dir["#{TEST_FIXTURE_DIR}/elf/libhello.so.0"], f.lib
       end
 
-      subject.clean
+      cleaner.clean
 
       if OS.mac?
         expect((f.bin/"a.out").stat.mode).to eq(0100555)
@@ -39,7 +42,7 @@ describe Cleaner do
     end
 
     it "prunes the prefix if it is empty" do
-      subject.clean
+      cleaner.clean
       expect(f.prefix).not_to be_a_directory
     end
 
@@ -47,7 +50,7 @@ describe Cleaner do
       subdir = f.bin/"subdir"
       subdir.mkpath
 
-      subject.clean
+      cleaner.clean
 
       expect(f.bin).not_to be_a_directory
       expect(subdir).not_to be_a_directory
@@ -60,7 +63,7 @@ describe Cleaner do
       dir.mkpath
       ln_s dir.basename, symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(dir).not_to exist
       expect(symlink).not_to be_a_symlink
@@ -74,7 +77,7 @@ describe Cleaner do
       dir.mkpath
       ln_s dir.basename, symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(dir).not_to exist
       expect(symlink).not_to be_a_symlink
@@ -85,7 +88,7 @@ describe Cleaner do
       symlink = f.prefix/"symlink"
       ln_s "target", symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(symlink).not_to be_a_symlink
     end
@@ -96,7 +99,7 @@ describe Cleaner do
       f.lib.mkpath
       touch file
 
-      subject.clean
+      cleaner.clean
 
       expect(file).not_to exist
     end
@@ -107,7 +110,7 @@ describe Cleaner do
       (f.lib/"perl5/darwin-thread-multi-2level").mkpath
       touch file
 
-      subject.clean
+      cleaner.clean
 
       expect(file).not_to exist
     end
@@ -118,7 +121,7 @@ describe Cleaner do
       (f.lib/"perl5/darwin-thread-multi-2level/auto/test").mkpath
       touch file
 
-      subject.clean
+      cleaner.clean
 
       expect(file).not_to exist
     end
@@ -129,7 +132,7 @@ describe Cleaner do
       f.lib.mkpath
       touch file
 
-      subject.clean
+      cleaner.clean
 
       expect(file).not_to exist
     end
@@ -140,7 +143,7 @@ describe Cleaner do
       f.class.skip_clean "bin"
       f.bin.mkpath
 
-      subject.clean
+      cleaner.clean
 
       expect(f.bin).to be_a_directory
     end
@@ -150,7 +153,7 @@ describe Cleaner do
       subdir = f.bin/"subdir"
       subdir.mkpath
 
-      subject.clean
+      cleaner.clean
 
       expect(f.bin).to be_a_directory
       expect(subdir).to be_a_directory
@@ -161,7 +164,7 @@ describe Cleaner do
       symlink = f.prefix/"symlink"
       ln_s "target", symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(symlink).to be_a_symlink
     end
@@ -174,7 +177,7 @@ describe Cleaner do
       dir.mkpath
       ln_s dir.basename, symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(dir).not_to exist
       expect(symlink).to be_a_symlink
@@ -189,7 +192,7 @@ describe Cleaner do
       dir.mkpath
       ln_s dir.basename, symlink
 
-      subject.clean
+      cleaner.clean
 
       expect(dir).not_to exist
       expect(symlink).to be_a_symlink
@@ -203,7 +206,7 @@ describe Cleaner do
       f.lib.mkpath
       touch file
 
-      subject.clean
+      cleaner.clean
 
       expect(file).to exist
     end
@@ -214,7 +217,7 @@ describe Cleaner do
 
       dir.mkpath
 
-      subject.clean
+      cleaner.clean
 
       expect(dir).to be_a_directory
     end
@@ -227,7 +230,7 @@ describe Cleaner do
       dir1.mkpath
       dir2.mkpath
 
-      subject.clean
+      cleaner.clean
 
       expect(dir1).to exist
       expect(dir2).not_to exist

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "cask/artifact/abstract_artifact"
 
 require "extend/hash_validator"
@@ -5,45 +8,35 @@ using HashValidator
 
 module Cask
   module Artifact
+    # Artifact corresponding to the `installer` stanza.
+    #
+    # @api private
     class Installer < AbstractArtifact
-      VALID_KEYS = Set.new [
+      VALID_KEYS = Set.new([
         :manual,
         :script,
-      ]
+      ]).freeze
 
+      # Extension module for manual installers.
       module ManualInstaller
         def install_phase(**)
           puts <<~EOS
             To complete the installation of Cask #{cask}, you must also
-            run the installer at
-
-              '#{cask.staged_path.join(path)}'
+            run the installer at:
+              #{cask.staged_path.join(path)}
           EOS
         end
       end
 
+      # Extension module for script installers.
       module ScriptInstaller
         def install_phase(command: nil, **_)
           ohai "Running #{self.class.dsl_key} script '#{path}'"
 
-          absolute_path = if path.absolute?
-            path
-          else
-            cask.staged_path.join(path)
-          end
-
-          if absolute_path.exist? && !absolute_path.executable?
-            FileUtils.chmod "+x", absolute_path
-          end
-
-          executable = if absolute_path.exist?
-            absolute_path
-          else
-            path
-          end
+          executable_path = staged_path_join_executable(path)
 
           command.run!(
-            executable,
+            executable_path,
             **args,
             env: { "PATH" => PATH.new(
               HOMEBREW_PREFIX/"bin", HOMEBREW_PREFIX/"sbin", ENV["PATH"]

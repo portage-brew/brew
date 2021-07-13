@@ -1,15 +1,18 @@
+# typed: false
+# frozen_string_literal: true
+
 require "formula"
 
 describe "patching" do
-  TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz".freeze
-  TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz".freeze
-  PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff".freeze
-  PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff".freeze
-  PATCH_A_CONTENTS = File.read "#{TEST_FIXTURE_DIR}/patches/noop-a.diff"
-  PATCH_B_CONTENTS = File.read "#{TEST_FIXTURE_DIR}/patches/noop-b.diff"
-  APPLY_A = "noop-a.diff".freeze
-  APPLY_B = "noop-b.diff".freeze
-  APPLY_C = "noop-c.diff".freeze
+  TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
+  TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz"
+  PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff"
+  PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff"
+  PATCH_A_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-a.diff").freeze
+  PATCH_B_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-b.diff").freeze
+  APPLY_A = "noop-a.diff"
+  APPLY_B = "noop-b.diff"
+  APPLY_C = "noop-c.diff"
 
   def formula(name = "formula_name", path: Formulary.core_path(name), spec: :stable, alias_path: nil, &block)
     Class.new(Formula) {
@@ -61,16 +64,6 @@ describe "patching" do
         end
       }.to raise_error(MissingApplyError)
     end
-  end
-
-  specify "single_patch" do
-    expect(
-      formula do
-        def patches
-          PATCH_URL_A
-        end
-      end,
-    ).to be_patched
   end
 
   specify "single_patch_dsl" do
@@ -157,7 +150,7 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(ErrorDuringExecution)
+    }.to raise_error(BuildError)
   end
 
   specify "single_patch_dsl_with_incorrect_strip_with_apply" do
@@ -171,7 +164,7 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(ErrorDuringExecution)
+    }.to raise_error(BuildError)
   end
 
   specify "patch_p0_dsl" do
@@ -197,72 +190,12 @@ describe "patching" do
     ).to be_patched
   end
 
-  specify "patch_p0" do
-    expect(
-      formula do
-        def patches
-          { p0: PATCH_URL_B }
-        end
-      end,
-    ).to be_patched
-  end
-
-  specify "patch_array" do
-    expect(
-      formula do
-        def patches
-          [PATCH_URL_A]
-        end
-      end,
-    ).to be_patched
-  end
-
-  specify "patch_hash" do
-    expect(
-      formula do
-        def patches
-          { p1: PATCH_URL_A }
-        end
-      end,
-    ).to be_patched
-  end
-
-  specify "patch_hash_array" do
-    expect(
-      formula do
-        def patches
-          { p1: [PATCH_URL_A] }
-        end
-      end,
-    ).to be_patched
-  end
-
   specify "patch_string" do
     expect(formula { patch PATCH_A_CONTENTS }).to be_patched
   end
 
   specify "patch_string_with_strip" do
     expect(formula { patch :p0, PATCH_B_CONTENTS }).to be_patched
-  end
-
-  specify "patch_data_constant" do
-    expect(
-      formula("test", path: Pathname.new(__FILE__).expand_path) do
-        def patches
-          :DATA
-        end
-      end,
-    ).to be_patched
-  end
-
-  specify "single_patch_missing_apply_fail" do
-    expect(
-      formula do
-        def patches
-          TESTBALL_PATCHES_URL
-        end
-      end,
-    ).to miss_apply
   end
 
   specify "single_patch_dsl_missing_apply_fail" do
@@ -287,7 +220,7 @@ describe "patching" do
       end
 
       f.brew { |formula, _staging| formula.patch }
-    }.to raise_error(ErrorDuringExecution)
+    }.to raise_error(BuildError)
   end
 end
 

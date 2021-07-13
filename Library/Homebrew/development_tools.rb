@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 # @private
 class DevelopmentTools
   class << self
@@ -20,7 +23,7 @@ class DevelopmentTools
     end
 
     def installation_instructions
-      "Install Clang or brew install gcc"
+      "Install Clang or run `brew install gcc`."
     end
     alias custom_installation_instructions installation_instructions
 
@@ -37,37 +40,22 @@ class DevelopmentTools
       :clang
     end
 
-    def gcc_4_2_build_version
-      @gcc_4_2_build_version ||= begin
-        if (gcc = locate("gcc-4.2")) &&
-           !gcc.realpath.basename.to_s.start_with?("llvm") &&
-           build_version = `#{gcc} --version 2>/dev/null`[/build (\d{4,})/, 1]
-          Version.new build_version
-        else
-          Version::NULL
-        end
-      end
-    end
-
     def clang_version
-      @clang_version ||= begin
-        if (path = locate("clang")) &&
-           build_version = `#{path} --version`[/(?:clang|LLVM) version (\d+\.\d)/, 1]
-          Version.new build_version
-        else
-          Version::NULL
-        end
+      @clang_version ||= if (path = locate("clang")) &&
+                            (build_version = `#{path} --version`[/(?:clang|LLVM) version (\d+\.\d(?:\.\d)?)/, 1])
+        Version.new build_version
+      else
+        Version::NULL
       end
     end
 
     def clang_build_version
-      @clang_build_version ||= begin
-        if (path = locate("clang")) &&
-           build_version = `#{path} --version`[%r{clang(-| version [^ ]+ \(tags/RELEASE_)(\d{2,})}, 2]
-          Version.new build_version
-        else
-          Version::NULL
-        end
+      @clang_build_version ||= if (path = locate("clang")) &&
+                                  (build_version = `#{path} --version`[
+%r{clang(-| version [^ ]+ \(tags/RELEASE_)(\d{2,})}, 2])
+        Version.new build_version
+      else
+        Version::NULL
       end
     end
 
@@ -75,7 +63,7 @@ class DevelopmentTools
       @llvm_clang_build_version ||= begin
         path = Formulary.factory("llvm").opt_prefix/"bin/clang"
         if path.executable? &&
-           build_version = `#{path} --version`[/clang version (\d\.\d\.\d)/, 1]
+           (build_version = `#{path} --version`[/clang version (\d+\.\d\.\d)/, 1])
           Version.new build_version
         else
           Version::NULL
@@ -85,10 +73,10 @@ class DevelopmentTools
 
     def non_apple_gcc_version(cc)
       (@non_apple_gcc_version ||= {}).fetch(cc) do
-        path = HOMEBREW_PREFIX/"opt/gcc/bin"/cc
+        path = HOMEBREW_PREFIX/"opt/#{CompilerSelector.preferred_gcc}/bin"/cc
         path = locate(cc) unless path.exist?
         version = if path &&
-                     build_version = `#{path} --version`[/gcc(?:(?:-\d(?:\.\d)?)? \(.+\))? (\d\.\d\.\d)/, 1]
+                     (build_version = `#{path} --version`[/gcc(?:(?:-\d+(?:\.\d)?)? \(.+\))? (\d+\.\d\.\d)/, 1])
           Version.new build_version
         else
           Version::NULL
@@ -98,7 +86,6 @@ class DevelopmentTools
     end
 
     def clear_version_cache
-      @gcc_4_2_build_version = nil
       @clang_version = @clang_build_version = nil
       @non_apple_gcc_version = {}
     end
@@ -110,6 +97,15 @@ class DevelopmentTools
     def subversion_handles_most_https_certificates?
       true
     end
+
+    def build_system_info
+      {
+        "os"         => ENV["HOMEBREW_SYSTEM"],
+        "os_version" => OS_VERSION,
+        "cpu_family" => Hardware::CPU.family,
+      }
+    end
+    alias generic_build_system_info build_system_info
   end
 end
 

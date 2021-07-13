@@ -1,29 +1,49 @@
+# typed: false
+# frozen_string_literal: true
+
+# {Pathname} extension for dealing with ELF files.
 # @see https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
+#
+# @api private
 module ELFShim
   MAGIC_NUMBER_OFFSET = 0
-  MAGIC_NUMBER_ASCII = "\x7fELF".freeze
+  private_constant :MAGIC_NUMBER_OFFSET
+  MAGIC_NUMBER_ASCII = "\x7fELF"
+  private_constant :MAGIC_NUMBER_ASCII
 
   OS_ABI_OFFSET = 0x07
+  private_constant :OS_ABI_OFFSET
   OS_ABI_SYSTEM_V = 0
+  private_constant :OS_ABI_SYSTEM_V
   OS_ABI_LINUX = 3
+  private_constant :OS_ABI_LINUX
 
   TYPE_OFFSET = 0x10
+  private_constant :TYPE_OFFSET
   TYPE_EXECUTABLE = 2
+  private_constant :TYPE_EXECUTABLE
   TYPE_SHARED = 3
+  private_constant :TYPE_SHARED
 
   ARCHITECTURE_OFFSET = 0x12
+  private_constant :ARCHITECTURE_OFFSET
   ARCHITECTURE_I386 = 0x3
+  private_constant :ARCHITECTURE_I386
   ARCHITECTURE_POWERPC = 0x14
+  private_constant :ARCHITECTURE_POWERPC
   ARCHITECTURE_ARM = 0x28
+  private_constant :ARCHITECTURE_ARM
   ARCHITECTURE_X86_64 = 0x62
+  private_constant :ARCHITECTURE_X86_64
   ARCHITECTURE_AARCH64 = 0xB7
+  private_constant :ARCHITECTURE_AARCH64
 
   def read_uint8(offset)
-    read(1, offset).unpack("C").first
+    read(1, offset).unpack1("C")
   end
 
   def read_uint16(offset)
-    read(2, offset).unpack("v").first
+    read(2, offset).unpack1("v")
   end
 
   def elf?
@@ -66,18 +86,37 @@ module ELFShim
     elf_type == :executable
   end
 
-  def dynamic_elf?
-    return @dynamic_elf if defined? @dynamic_elf
+  def rpath
+    return @rpath if defined? @rpath
 
-    if which "readelf"
-      Utils.popen_read("readelf", "-l", to_path).include?(" DYNAMIC ")
-    elsif which "file"
-      !Utils.popen_read("file", "-L", "-b", to_path)[/dynamic|shared/].nil?
+    @rpath = rpath_using_patchelf_rb
+  end
+
+  def interpreter
+    return @interpreter if defined? @interpreter
+
+    @interpreter = patchelf_patcher.interpreter
+  end
+
+  def patch!(interpreter: nil, rpath: nil)
+    return if interpreter.blank? && rpath.blank?
+
+    if HOMEBREW_PATCHELF_RB_WRITE
+      save_using_patchelf_rb interpreter, rpath
     else
-      raise "Please install either readelf (from binutils) or file."
+      save_using_patchelf interpreter, rpath
     end
   end
 
+  def dynamic_elf?
+    return @dynamic_elf if defined? @dynamic_elf
+
+    @dynamic_elf = patchelf_patcher.elf.segment_by_type(:DYNAMIC).present?
+  end
+
+  # Helper class for reading metadata from an ELF file.
+  #
+  # @api private
   class Metadata
     attr_reader :path, :dylib_id, :dylibs
 
@@ -107,50 +146,48 @@ module ELFShim
     private
 
     def needed_libraries(path)
-      if DevelopmentTools.locate "readelf"
-        needed_libraries_using_readelf path
-      elsif DevelopmentTools.locate "patchelf"
-        needed_libraries_using_patchelf path
-      else
-        raise "patchelf must be installed: brew install patchelf"
-      end
-    end
-
-    def needed_libraries_using_patchelf(path)
       return [nil, []] unless path.dynamic_elf?
 
-      patchelf = DevelopmentTools.locate "patchelf"
-      if path.dylib?
-        command = [patchelf, "--print-soname", path.expand_path.to_s]
-        soname = Utils.safe_popen_read(*command).chomp
-      end
-      command = [patchelf, "--print-needed", path.expand_path.to_s]
-      needed = Utils.safe_popen_read(*command).split("\n")
-      [soname, needed]
+      needed_libraries_using_patchelf_rb path
     end
 
-    def needed_libraries_using_readelf(path)
-      soname = nil
-      needed = []
-      command = ["readelf", "-d", path.expand_path.to_s]
-      lines = Utils.safe_popen_read(*command).split("\n")
-      lines.each do |s|
-        filename = s[/\[(.*)\]/, 1]
-        next if filename.nil?
-
-        if s.include? "(SONAME)"
-          soname = filename
-        elsif s.include? "(NEEDED)"
-          needed << filename
-        end
-      end
-      [soname, needed]
+    def needed_libraries_using_patchelf_rb(path)
+      patcher = path.patchelf_patcher
+      [patcher.soname, patcher.needed]
     end
+  end
+  private_constant :Metadata
+
+  def save_using_patchelf(new_interpreter, new_rpath)
+    patchelf = DevelopmentTools.locate "patchelf"
+    odie "Could not locate `patchelf`; please run `brew install patchelf`" if patchelf.blank?
+    args = []
+    args << "--set-interpreter" << new_interpreter if new_interpreter.present?
+    args << "--force-rpath" << "--set-rpath" << new_rpath if new_rpath.present?
+
+    Homebrew.safe_system(patchelf, *args, to_s)
+  end
+
+  def save_using_patchelf_rb(new_interpreter, new_rpath)
+    patcher = patchelf_patcher
+    patcher.interpreter = new_interpreter if new_interpreter.present?
+    patcher.rpath = new_rpath if new_rpath.present?
+    patcher.save(patchelf_compatible: true)
+  end
+
+  def rpath_using_patchelf_rb
+    patchelf_patcher.runpath || patchelf_patcher.rpath
+  end
+
+  def patchelf_patcher
+    require "patchelf"
+    @patchelf_patcher ||= ::PatchELF::Patcher.new to_s, on_error: :silent
   end
 
   def metadata
     @metadata ||= Metadata.new(self)
   end
+  private :metadata
 
   def dylib_id
     metadata.dylib_id

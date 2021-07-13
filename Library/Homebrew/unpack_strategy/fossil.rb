@@ -1,9 +1,19 @@
+# typed: true
+# frozen_string_literal: true
+
+require "system_command"
+
 module UnpackStrategy
+  # Strategy for unpacking Fossil repositories.
   class Fossil
+    extend T::Sig
+
     include UnpackStrategy
+    extend SystemCommand::Mixin
 
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       []
     end
@@ -18,6 +28,7 @@ module UnpackStrategy
 
     private
 
+    sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
     def extract_to_dir(unpack_dir, basename:, verbose:)
       args = if @ref_type && @ref
         [@ref]

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::CaskLoader::FromPathLoader do
   describe "#load" do
     context "when the file does not contain a cask" do
@@ -11,7 +14,7 @@ describe Cask::CaskLoader::FromPathLoader do
 
       it "raises an error" do
         expect {
-          described_class.new(path).load
+          described_class.new(path).load(config: nil)
         }.to raise_error(Cask::CaskUnreadableError, /does not contain a cask/)
       end
     end
@@ -27,7 +30,7 @@ describe Cask::CaskLoader::FromPathLoader do
 
       it "raises an error" do
         expect {
-          described_class.new(path).load
+          described_class.new(path).load(config: nil)
         }.to raise_error(Cask::CaskUnreadableError, /undefined local variable or method/)
       end
     end

@@ -1,10 +1,13 @@
+# typed: false
+# frozen_string_literal: true
+
 require "migrator"
 require "test/support/fixtures/testball"
 require "tab"
 require "keg"
 
 describe Migrator do
-  subject { described_class.new(new_formula) }
+  subject(:migrator) { described_class.new(new_formula) }
 
   let(:new_formula) { Testball.new("newname") }
   let(:old_formula) { Testball.new("oldname") }
@@ -38,7 +41,7 @@ describe Migrator do
 
     old_pin.make_relative_symlink old_keg_record
 
-    subject # needs to be evaluated eagerly
+    migrator # needs to be evaluated eagerly
 
     (HOMEBREW_PREFIX/"bin").mkpath
   end
@@ -81,7 +84,7 @@ describe Migrator do
 
   specify "#move_to_new_directory" do
     keg.unlink
-    subject.move_to_new_directory
+    migrator.move_to_new_directory
 
     expect(new_keg_record).to be_a_directory
     expect(new_keg_record/"bin").to be_a_directory
@@ -94,7 +97,7 @@ describe Migrator do
     old_keg_record.parent.rmtree
     (new_keg_record/"bin").mkpath
 
-    subject.backup_oldname_cellar
+    migrator.backup_oldname_cellar
 
     expect(old_keg_record/"bin").to be_a_directory
     expect(old_keg_record/"bin").to be_a_directory
@@ -104,18 +107,18 @@ describe Migrator do
     (new_keg_record/"bin").mkpath
     expected_relative = new_keg_record.relative_path_from HOMEBREW_PINNED_KEGS
 
-    subject.repin
+    migrator.repin
 
-    expect(subject.new_pin_record).to be_a_symlink
-    expect(subject.new_pin_record.readlink).to eq(expected_relative)
-    expect(subject.old_pin_record).not_to exist
+    expect(migrator.new_pin_record).to be_a_symlink
+    expect(migrator.new_pin_record.readlink).to eq(expected_relative)
+    expect(migrator.old_pin_record).not_to exist
   end
 
   specify "#unlink_oldname" do
     expect(HOMEBREW_LINKED_KEGS.children.count).to eq(1)
     expect((HOMEBREW_PREFIX/"opt").children.count).to eq(1)
 
-    subject.unlink_oldname
+    migrator.unlink_oldname
 
     expect(HOMEBREW_LINKED_KEGS).not_to exist
     expect(HOMEBREW_LIBRARY/"bin").not_to exist
@@ -130,7 +133,7 @@ describe Migrator do
       FileUtils.touch new_keg_record/"bin"/file
     end
 
-    subject.link_newname
+    migrator.link_newname
 
     expect(HOMEBREW_LINKED_KEGS.children.count).to eq(1)
     expect((HOMEBREW_PREFIX/"opt").children.count).to eq(1)
@@ -138,7 +141,7 @@ describe Migrator do
 
   specify "#link_oldname_opt" do
     new_keg_record.mkpath
-    subject.link_oldname_opt
+    migrator.link_oldname_opt
     expect((HOMEBREW_PREFIX/"opt/oldname").realpath).to eq(new_keg_record.realpath)
   end
 
@@ -146,7 +149,7 @@ describe Migrator do
     (new_keg_record/"bin").mkpath
     keg.unlink
     keg.uninstall
-    subject.link_oldname_cellar
+    migrator.link_oldname_cellar
     expect((HOMEBREW_CELLAR/"oldname").realpath).to eq(new_keg_record.parent.realpath)
   end
 
@@ -156,7 +159,7 @@ describe Migrator do
     tab.tabfile = HOMEBREW_CELLAR/"newname/0.1/INSTALL_RECEIPT.json"
     tab.source["path"] = "/path/that/must/be/changed/by/update_tabs"
     tab.write
-    subject.update_tabs
+    migrator.update_tabs
     expect(Tab.for_keg(new_keg_record).source["path"]).to eq(new_formula.path.to_s)
   end
 
@@ -166,7 +169,7 @@ describe Migrator do
     tab.source["path"] = old_formula.path.to_s
     tab.write
 
-    subject.migrate
+    migrator.migrate
 
     expect(new_keg_record).to exist
     expect(old_keg_record.parent).to be_a_symlink
@@ -184,7 +187,7 @@ describe Migrator do
     old_opt_record = HOMEBREW_PREFIX/"opt/oldname"
     old_opt_record.unlink if old_opt_record.symlink?
     old_opt_record.make_relative_symlink(new_keg_record)
-    subject.unlink_oldname_opt
+    migrator.unlink_oldname_opt
     expect(old_opt_record).not_to be_a_symlink
   end
 
@@ -193,15 +196,15 @@ describe Migrator do
     keg.unlink
     keg.uninstall
     old_keg_record.parent.make_relative_symlink(new_keg_record.parent)
-    subject.unlink_oldname_cellar
+    migrator.unlink_oldname_cellar
     expect(old_keg_record.parent).not_to be_a_symlink
   end
 
-  specify "#backup_oldname_cellar" do
+  specify "#backup_oldname_cellar after uninstall" do
     (new_keg_record/"bin").mkpath
     keg.unlink
     keg.uninstall
-    subject.backup_oldname_cellar
+    migrator.backup_oldname_cellar
     expect(old_keg_record.subdirs).not_to be_empty
   end
 
@@ -217,18 +220,15 @@ describe Migrator do
   end
 
   describe "#backup_oldname" do
-    after do
-      expect(old_keg_record.parent).to be_a_directory
-      expect(old_keg_record.parent.subdirs).not_to be_empty
-      expect(HOMEBREW_LINKED_KEGS/"oldname").to exist
-      expect(HOMEBREW_PREFIX/"opt/oldname").to exist
-      expect(HOMEBREW_PINNED_KEGS/"oldname").to be_a_symlink
-      expect(keg).to be_linked
-    end
-
     context "when cellar exists" do
       it "backs up the old name" do
-        subject.backup_oldname
+        migrator.backup_oldname
+        expect(old_keg_record.parent).to be_a_directory
+        expect(old_keg_record.parent.subdirs).not_to be_empty
+        expect(HOMEBREW_LINKED_KEGS/"oldname").to exist
+        expect(HOMEBREW_PREFIX/"opt/oldname").to exist
+        expect(HOMEBREW_PINNED_KEGS/"oldname").to be_a_symlink
+        expect(keg).to be_linked
       end
     end
 
@@ -237,7 +237,13 @@ describe Migrator do
         (new_keg_record/"bin").mkpath
         keg.unlink
         keg.uninstall
-        subject.backup_oldname
+        migrator.backup_oldname
+        expect(old_keg_record.parent).to be_a_directory
+        expect(old_keg_record.parent.subdirs).not_to be_empty
+        expect(HOMEBREW_LINKED_KEGS/"oldname").to exist
+        expect(HOMEBREW_PREFIX/"opt/oldname").to exist
+        expect(HOMEBREW_PINNED_KEGS/"oldname").to be_a_symlink
+        expect(keg).to be_linked
       end
     end
 
@@ -247,7 +253,13 @@ describe Migrator do
         keg.unlink
         keg.uninstall
         old_keg_record.parent.make_relative_symlink(new_keg_record.parent)
-        subject.backup_oldname
+        migrator.backup_oldname
+        expect(old_keg_record.parent).to be_a_directory
+        expect(old_keg_record.parent.subdirs).not_to be_empty
+        expect(HOMEBREW_LINKED_KEGS/"oldname").to exist
+        expect(HOMEBREW_PREFIX/"opt/oldname").to exist
+        expect(HOMEBREW_PINNED_KEGS/"oldname").to be_a_symlink
+        expect(keg).to be_linked
       end
     end
   end

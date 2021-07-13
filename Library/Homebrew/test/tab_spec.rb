@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "tab"
 require "formula"
 
@@ -16,7 +19,7 @@ describe Tab do
     end
   end
 
-  subject {
+  subject(:tab) {
     described_class.new(
       "homebrew_version"     => HOMEBREW_VERSION,
       "used_options"         => used_options.as_flags,
@@ -36,10 +39,11 @@ describe Tab do
         "spec"     => "stable",
         "versions" => {
           "stable" => "0.10",
-          "devel"  => "0.14",
           "head"   => "HEAD-1111111",
         },
       },
+      "arch"                 => Hardware::CPU.arch,
+      "built_on"             => DevelopmentTools.build_system_info,
     )
   }
 
@@ -64,14 +68,12 @@ describe Tab do
     expect(tab).not_to be_built_as_bottle
     expect(tab).not_to be_poured_from_bottle
     expect(tab).to be_stable
-    expect(tab).not_to be_devel
     expect(tab).not_to be_head
     expect(tab.tap).to be nil
     expect(tab.time).to be nil
     expect(tab.HEAD).to be nil
     expect(tab.runtime_dependencies).to be nil
     expect(tab.stable_version).to be nil
-    expect(tab.devel_version).to be nil
     expect(tab.head_version).to be nil
     expect(tab.cxxstdlib.compiler).to eq(DevelopmentTools.default_compiler)
     expect(tab.cxxstdlib.type).to be nil
@@ -79,20 +81,15 @@ describe Tab do
   end
 
   specify "#include?" do
-    expect(subject).to include("with-foo")
-    expect(subject).to include("without-bar")
+    expect(tab).to include("with-foo")
+    expect(tab).to include("without-bar")
   end
 
   specify "#with?" do
-    expect(subject).to be_built_with("foo")
-    expect(subject).to be_built_with("qux")
-    expect(subject).not_to be_built_with("bar")
-    expect(subject).not_to be_built_with("baz")
-  end
-
-  specify "#universal?" do
-    tab = described_class.new(used_options: %w[--universal])
-    expect(tab).to be_universal
+    expect(tab).to be_built_with("foo")
+    expect(tab).to be_built_with("qux")
+    expect(tab).not_to be_built_with("bar")
+    expect(tab).not_to be_built_with("baz")
   end
 
   specify "#parsed_homebrew_version" do
@@ -140,27 +137,28 @@ describe Tab do
 
   specify "::runtime_deps_hash" do
     runtime_deps = [Dependency.new("foo")]
-    stub_formula_loader formula("foo") { url "foo-1.0" }
-    runtime_deps_hash = described_class.runtime_deps_hash(runtime_deps)
+    foo = formula("foo") { url "foo-1.0" }
+    stub_formula_loader foo
+    runtime_deps_hash = described_class.runtime_deps_hash(foo, runtime_deps)
     tab = described_class.new
     tab.homebrew_version = "1.1.6"
     tab.runtime_dependencies = runtime_deps_hash
     expect(tab.runtime_dependencies).to eql(
-      [{ "full_name" => "foo", "version" => "1.0" }],
+      [{ "full_name" => "foo", "version" => "1.0", "declared_directly" => false }],
     )
   end
 
   specify "#cxxstdlib" do
-    expect(subject.cxxstdlib.compiler).to eq(:clang)
-    expect(subject.cxxstdlib.type).to eq(:libcxx)
+    expect(tab.cxxstdlib.compiler).to eq(:clang)
+    expect(tab.cxxstdlib.type).to eq(:libcxx)
   end
 
   specify "other attributes" do
-    expect(subject.HEAD).to eq(TEST_SHA1)
-    expect(subject.tap.name).to eq("homebrew/core")
-    expect(subject.time).to eq(time)
-    expect(subject).not_to be_built_as_bottle
-    expect(subject).to be_poured_from_bottle
+    expect(tab.HEAD).to eq(TEST_SHA1)
+    expect(tab.tap.name).to eq("homebrew/core")
+    expect(tab.time).to eq(time)
+    expect(tab).not_to be_built_as_bottle
+    expect(tab).to be_poured_from_bottle
   end
 
   describe "::from_file" do
@@ -177,7 +175,6 @@ describe Tab do
       expect(tab).not_to be_built_as_bottle
       expect(tab).to be_poured_from_bottle
       expect(tab).to be_stable
-      expect(tab).not_to be_devel
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
       expect(tab.spec).to eq(:stable)
@@ -187,7 +184,6 @@ describe Tab do
       expect(tab.cxxstdlib.type).to eq(:libcxx)
       expect(tab.runtime_dependencies).to eq(runtime_dependencies)
       expect(tab.stable_version.to_s).to eq("2.14")
-      expect(tab.devel_version.to_s).to eq("2.15")
       expect(tab.head_version.to_s).to eq("HEAD-0000000")
       expect(tab.source["path"]).to eq(source_path)
     end
@@ -207,7 +203,6 @@ describe Tab do
       expect(tab).not_to be_built_as_bottle
       expect(tab).to be_poured_from_bottle
       expect(tab).to be_stable
-      expect(tab).not_to be_devel
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
       expect(tab.spec).to eq(:stable)
@@ -217,7 +212,6 @@ describe Tab do
       expect(tab.cxxstdlib.type).to eq(:libcxx)
       expect(tab.runtime_dependencies).to eq(runtime_dependencies)
       expect(tab.stable_version.to_s).to eq("2.14")
-      expect(tab.devel_version.to_s).to eq("2.15")
       expect(tab.head_version.to_s).to eq("HEAD-0000000")
       expect(tab.source["path"]).to eq(source_path)
     end
@@ -231,7 +225,6 @@ describe Tab do
       expect(tab).not_to be_built_as_bottle
       expect(tab).to be_poured_from_bottle
       expect(tab).to be_stable
-      expect(tab).not_to be_devel
       expect(tab).not_to be_head
       expect(tab.tap.name).to eq("homebrew/core")
       expect(tab.spec).to eq(:stable)
@@ -276,8 +269,8 @@ describe Tab do
       tab = described_class.create(f, compiler, stdlib)
 
       runtime_dependencies = [
-        { "full_name" => "bar", "version" => "2.0" },
-        { "full_name" => "user/repo/from_tap", "version" => "1.0" },
+        { "full_name" => "bar", "version" => "2.0", "declared_directly" => true },
+        { "full_name" => "user/repo/from_tap", "version" => "1.0", "declared_directly" => true },
       ]
       expect(tab.runtime_dependencies).to eq(runtime_dependencies)
 
@@ -296,19 +289,19 @@ describe Tab do
   end
 
   describe "::for_keg" do
-    subject { described_class.for_keg(f.prefix) }
+    subject(:tab_for_keg) { described_class.for_keg(f.prefix) }
 
     it "creates a Tab for a given Keg" do
       f.prefix.mkpath
       f_tab_path.write f_tab_content
 
-      expect(subject.tabfile).to eq(f_tab_path)
+      expect(tab_for_keg.tabfile).to eq(f_tab_path)
     end
 
-    it "can create a Tab for a non-existant Keg" do
+    it "can create a Tab for a non-existent Keg" do
       f.prefix.mkpath
 
-      expect(subject.tabfile).to eq(f_tab_path)
+      expect(tab_for_keg.tabfile).to eq(f_tab_path)
     end
   end
 
@@ -326,7 +319,7 @@ describe Tab do
       expect(tab.source["path"]).to eq(alias_path.to_s)
     end
 
-    it "creates a Tab for a given Formula" do
+    it "creates a Tab for a given Formula with existing Tab" do
       f.prefix.mkpath
       f_tab_path.write f_tab_content
 
@@ -334,7 +327,7 @@ describe Tab do
       expect(tab.tabfile).to eq(f_tab_path)
     end
 
-    it "can create a Tab for a non-existant Formula" do
+    it "can create a Tab for a non-existent Formula" do
       f.prefix.mkpath
 
       tab = described_class.for_formula(f)
@@ -356,6 +349,7 @@ describe Tab do
     end
 
     it "can create a Tab for a Formula with an outdated Kegs" do
+      f.prefix.mkpath
       f_tab_path.write f_tab_content
 
       f2 = formula { url "foo-2.0" }
@@ -369,28 +363,41 @@ describe Tab do
   end
 
   specify "#to_json" do
-    tab = described_class.new(JSON.parse(subject.to_json))
-    expect(tab.used_options.sort).to eq(subject.used_options.sort)
-    expect(tab.unused_options.sort).to eq(subject.unused_options.sort)
-    expect(tab.built_as_bottle).to eq(subject.built_as_bottle)
-    expect(tab.poured_from_bottle).to eq(subject.poured_from_bottle)
-    expect(tab.changed_files).to eq(subject.changed_files)
-    expect(tab.tap).to eq(subject.tap)
-    expect(tab.spec).to eq(subject.spec)
-    expect(tab.time).to eq(subject.time)
-    expect(tab.HEAD).to eq(subject.HEAD)
-    expect(tab.compiler).to eq(subject.compiler)
-    expect(tab.stdlib).to eq(subject.stdlib)
-    expect(tab.runtime_dependencies).to eq(subject.runtime_dependencies)
-    expect(tab.stable_version).to eq(subject.stable_version)
-    expect(tab.devel_version).to eq(subject.devel_version)
-    expect(tab.head_version).to eq(subject.head_version)
-    expect(tab.source["path"]).to eq(subject.source["path"])
+    json_tab = described_class.new(JSON.parse(tab.to_json))
+    expect(json_tab.homebrew_version).to eq(tab.homebrew_version)
+    expect(json_tab.used_options.sort).to eq(tab.used_options.sort)
+    expect(json_tab.unused_options.sort).to eq(tab.unused_options.sort)
+    expect(json_tab.built_as_bottle).to eq(tab.built_as_bottle)
+    expect(json_tab.poured_from_bottle).to eq(tab.poured_from_bottle)
+    expect(json_tab.changed_files).to eq(tab.changed_files)
+    expect(json_tab.tap).to eq(tab.tap)
+    expect(json_tab.spec).to eq(tab.spec)
+    expect(json_tab.time).to eq(tab.time)
+    expect(json_tab.compiler).to eq(tab.compiler)
+    expect(json_tab.stdlib).to eq(tab.stdlib)
+    expect(json_tab.runtime_dependencies).to eq(tab.runtime_dependencies)
+    expect(json_tab.stable_version).to eq(tab.stable_version)
+    expect(json_tab.head_version).to eq(tab.head_version)
+    expect(json_tab.source["path"]).to eq(tab.source["path"])
+    expect(json_tab.arch).to eq(tab.arch.to_s)
+    expect(json_tab.built_on["os"]).to eq(tab.built_on["os"])
+  end
+
+  specify "#to_bottle_hash" do
+    json_tab = described_class.new(JSON.parse(tab.to_bottle_hash.to_json))
+    expect(json_tab.homebrew_version).to eq(tab.homebrew_version)
+    expect(json_tab.changed_files).to eq(tab.changed_files)
+    expect(json_tab.source_modified_time).to eq(tab.source_modified_time)
+    expect(json_tab.stdlib).to eq(tab.stdlib)
+    expect(json_tab.compiler).to eq(tab.compiler)
+    expect(json_tab.runtime_dependencies).to eq(tab.runtime_dependencies)
+    expect(json_tab.arch).to eq(tab.arch.to_s)
+    expect(json_tab.built_on["os"]).to eq(tab.built_on["os"])
   end
 
   specify "::remap_deprecated_options" do
     deprecated_options = [DeprecatedOption.new("with-foo", "with-foo-new")]
-    remapped_options = described_class.remap_deprecated_options(deprecated_options, subject.used_options)
+    remapped_options = described_class.remap_deprecated_options(deprecated_options, tab.used_options)
     expect(remapped_options).to include(Option.new("without-bar"))
     expect(remapped_options).to include(Option.new("with-foo-new"))
   end

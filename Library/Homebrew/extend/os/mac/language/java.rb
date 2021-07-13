@@ -1,18 +1,13 @@
+# typed: true
+# frozen_string_literal: true
+
 module Language
   module Java
-    def self.java_home_cmd(version = nil)
-      version_flag = " --version #{version}" if version
-      "/usr/libexec/java_home#{version_flag}"
-    end
-
     def self.java_home(version = nil)
-      cmd = Language::Java.java_home_cmd(version)
-      Pathname.new Utils.popen_read(cmd).chomp
-    end
+      openjdk = find_openjdk_formula(version)
+      return unless openjdk
 
-    # @private
-    def self.java_home_shell(version = nil)
-      "$(#{java_home_cmd(version)})"
+      openjdk.opt_libexec/"openjdk.jdk/Contents/Home"
     end
   end
 end

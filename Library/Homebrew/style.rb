@@ -1,75 +1,138 @@
+# typed: false
+# frozen_string_literal: true
+
+require "shellwords"
+
 module Homebrew
+  # Helper module for running RuboCop.
+  #
+  # @api private
   module Style
     module_function
 
     # Checks style for a list of files, printing simple RuboCop output.
     # Returns true if violations were found, false otherwise.
-    def check_style_and_print(files, options = {})
-      check_style_impl(files, :print, options)
+    def check_style_and_print(files, **options)
+      success = check_style_impl(files, :print, **options)
+
+      if ENV["GITHUB_ACTIONS"] && !success
+        check_style_json(files, **options).each do |path, offenses|
+          offenses.each do |o|
+            line = o.location.line
+            column = o.location.line
+
+            annotation = GitHub::Actions::Annotation.new(:error, o.message, file: path, line: line, column: column)
+            puts annotation if annotation.relevant?
+          end
+        end
+      end
+
+      success
     end
 
-    # Checks style for a list of files, returning results as a RubocopResults
+    # Checks style for a list of files, returning results as an {Offenses}
     # object parsed from its JSON output.
-    def check_style_json(files, options = {})
-      check_style_impl(files, :json, options)
+    def check_style_json(files, **options)
+      check_style_impl(files, :json, **options)
     end
 
-    def check_style_impl(files, output_type, options = {})
-      fix = options[:fix]
+    def check_style_impl(files, output_type,
+                         fix: false,
+                         except_cops: nil, only_cops: nil,
+                         display_cop_names: false,
+                         reset_cache: false,
+                         debug: false, verbose: false)
+      raise ArgumentError, "Invalid output type: #{output_type.inspect}" unless [:print, :json].include?(output_type)
 
+      shell_files, ruby_files =
+        Array(files).map(&method(:Pathname))
+                    .partition { |f| f.realpath == HOMEBREW_BREW_FILE.realpath || f.extname == ".sh" }
+
+      rubocop_result = if shell_files.any? && ruby_files.none?
+        output_type == :json ? [] : true
+      else
+        run_rubocop(ruby_files, output_type,
+                    fix: fix,
+                    except_cops: except_cops, only_cops: only_cops,
+                    display_cop_names: display_cop_names,
+                    reset_cache: reset_cache,
+                    debug: debug, verbose: verbose)
+      end
+
+      shellcheck_result = if ruby_files.any? && shell_files.none?
+        output_type == :json ? [] : true
+      else
+        run_shellcheck(shell_files, output_type)
+      end
+
+      if output_type == :json
+        Offenses.new(rubocop_result + shellcheck_result)
+      else
+        rubocop_result && shellcheck_result
+      end
+    end
+
+    RUBOCOP = (HOMEBREW_LIBRARY_PATH/"utils/rubocop.rb").freeze
+
+    def run_rubocop(files, output_type,
+                    fix: false, except_cops: nil, only_cops: nil, display_cop_names: false, reset_cache: false,
+                    debug: false, verbose: false)
       Homebrew.install_bundler_gems!
-      require "rubocop"
-      require "rubocops"
+
+      require "warnings"
+
+      Warnings.ignore :parser_syntax do
+        require "rubocop"
+      end
+
+      require "rubocops/all"
 
       args = %w[
         --force-exclusion
       ]
-      if fix
-        args << "--auto-correct"
+      args << if fix
+        "-A"
       else
-        args << "--parallel"
+        "--parallel"
       end
 
-      if ARGV.verbose?
-        args += ["--extra-details", "--display-cop-names"]
-      end
+      args += ["--extra-details"] if verbose
+      args += ["--display-cop-names"] if display_cop_names || verbose
 
-      if options[:except_cops]
-        options[:except_cops].map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
-        cops_to_exclude = options[:except_cops].select do |cop|
+      if except_cops
+        except_cops.map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
+        cops_to_exclude = except_cops.select do |cop|
           RuboCop::Cop::Cop.registry.names.include?(cop) ||
             RuboCop::Cop::Cop.registry.departments.include?(cop.to_sym)
         end
 
         args << "--except" << cops_to_exclude.join(",") unless cops_to_exclude.empty?
-      elsif options[:only_cops]
-        options[:only_cops].map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
-        cops_to_include = options[:only_cops].select do |cop|
+      elsif only_cops
+        only_cops.map! { |cop| RuboCop::Cop::Cop.registry.qualified_cop_name(cop.to_s, "") }
+        cops_to_include = only_cops.select do |cop|
           RuboCop::Cop::Cop.registry.names.include?(cop) ||
             RuboCop::Cop::Cop.registry.departments.include?(cop.to_sym)
         end
 
-        if cops_to_include.empty?
-          odie "RuboCops #{options[:only_cops].join(",")} were not found"
-        end
+        odie "RuboCops #{only_cops.join(",")} were not found" if cops_to_include.empty?
 
         args << "--only" << cops_to_include.join(",")
       end
 
-      has_non_formula = Array(files).any? do |file|
+      has_non_formula = files.any? do |file|
         File.expand_path(file).start_with? HOMEBREW_LIBRARY_PATH
       end
 
-      if files && !has_non_formula
+      if files.any? && !has_non_formula
         config = if files.first && File.exist?("#{files.first}/spec")
           HOMEBREW_LIBRARY/".rubocop_rspec.yml"
         else
-          HOMEBREW_LIBRARY/".rubocop_audit.yml"
+          HOMEBREW_LIBRARY/".rubocop.yml"
         end
         args << "--config" << config
       end
 
-      if files.nil?
+      if files.blank?
         args << HOMEBREW_LIBRARY_PATH
       else
         args += files
@@ -77,77 +140,131 @@ module Homebrew
 
       cache_env = { "XDG_CACHE_HOME" => "#{HOMEBREW_CACHE}/style" }
 
-      rubocop_success = false
+      FileUtils.rm_rf cache_env["XDG_CACHE_HOME"] if reset_cache
 
       case output_type
       when :print
-        args << "--debug" if ARGV.debug?
-        args << "--display-cop-names" if ARGV.include? "--display-cop-names"
-        args << "--format" << "simple" if files
-        system(cache_env, "rubocop", *args)
-        rubocop_success = $CHILD_STATUS.success?
+        args << "--debug" if debug
+
+        # Don't show the default formatter's progress dots
+        # on CI or if only checking a single file.
+        args << "--format" << "clang" if ENV["CI"] || files.count { |f| !f.directory? } == 1
+
+        args << "--color" if Tty.color?
+
+        system cache_env, RUBY_PATH, RUBOCOP, *args
+        $CHILD_STATUS.success?
       when :json
-        json, err, status =
-          Open3.capture3(cache_env, "rubocop",
-                         "--format", "json", *args)
-        # exit status of 1 just means violations were found; other numbers mean
-        # execution errors.
-        # exitstatus can also be nil if RuboCop process crashes, e.g. due to
-        # native extension problems.
-        # JSON needs to be at least 2 characters.
-        if !(0..1).cover?(status.exitstatus) || json.to_s.length < 2
-          raise "Error running `rubocop --format json #{args.join " "}`\n#{err}"
-        end
-
-        return RubocopResults.new(JSON.parse(json))
-      else
-        raise "Invalid output_type for check_style_impl: #{output_type}"
+        result = system_command RUBY_PATH,
+                                args: [RUBOCOP, "--format", "json", *args],
+                                env:  cache_env
+        json = json_result!(result)
+        json["files"]
       end
+    end
 
-      return !rubocop_success if !files.nil? && !has_non_formula
-
-      shellcheck   = which("shellcheck")
+    def run_shellcheck(files, output_type)
+      shellcheck   = Formula["shellcheck"].opt_bin/"shellcheck" if Formula["shellcheck"].any_version_installed?
+      shellcheck ||= which("shellcheck")
       shellcheck ||= which("shellcheck", ENV["HOMEBREW_PATH"])
       shellcheck ||= begin
         ohai "Installing `shellcheck` for shell style checks..."
-        system HOMEBREW_BREW_FILE, "install", "shellcheck"
-        which("shellcheck") || which("shellcheck", ENV["HOMEBREW_PATH"])
-      end
-      unless shellcheck
-        opoo "Could not find or install `shellcheck`! Not checking shell style."
-        return !rubocop_success
+        safe_system HOMEBREW_BREW_FILE, "install", "shellcheck"
+        Formula["shellcheck"].opt_bin/"shellcheck"
       end
 
-      shell_files = [
-        HOMEBREW_BREW_FILE,
-        *Pathname.glob("#{HOMEBREW_LIBRARY}/Homebrew/*.sh"),
-        *Pathname.glob("#{HOMEBREW_LIBRARY}/Homebrew/cmd/*.sh"),
-        *Pathname.glob("#{HOMEBREW_LIBRARY}/Homebrew/utils/*.sh"),
-      ].select(&:exist?)
-      # TODO: check, fix completions here too.
-      # TODO: consider using ShellCheck JSON output
-      shellcheck_success = system shellcheck, "--shell=bash", *shell_files
-      !rubocop_success || !shellcheck_success
+      if files.empty?
+        files = [
+          HOMEBREW_BREW_FILE,
+          HOMEBREW_REPOSITORY/"completions/bash/brew",
+          *HOMEBREW_LIBRARY.glob("Homebrew/*.sh"),
+          *HOMEBREW_LIBRARY.glob("Homebrew/shims/**/*").map(&:realpath).uniq
+                           .reject { |path| path.directory? || path.basename.to_s == "cc" },
+          *HOMEBREW_LIBRARY.glob("Homebrew/{dev-,}cmd/*.sh"),
+          *HOMEBREW_LIBRARY.glob("Homebrew/{cask/,}utils/*.sh"),
+        ]
+      end
+
+      args = ["--shell=bash", "--enable=all", "--external-sources", "--source-path=#{HOMEBREW_LIBRARY}", "--", *files]
+
+      case output_type
+      when :print
+        system shellcheck, "--format=tty", *args
+        $CHILD_STATUS.success?
+      when :json
+        result = system_command shellcheck, args: ["--format=json", *args]
+        json = json_result!(result)
+
+        # Convert to same format as RuboCop offenses.
+        severity_hash = { "style" => "refactor", "info" => "convention" }
+        json.group_by { |v| v["file"] }
+            .map do |k, v|
+          {
+            "path"     => k,
+            "offenses" => v.map do |o|
+              o.delete("file")
+
+              o["cop_name"] = "SC#{o.delete("code")}"
+
+              level = o.delete("level")
+              o["severity"] = severity_hash.fetch(level, level)
+
+              line = o.delete("line")
+              column = o.delete("column")
+
+              o["corrected"] = false
+              o["correctable"] = o.delete("fix").present?
+
+              o["location"] = {
+                "start_line"   => line,
+                "start_column" => column,
+                "last_line"    => o.delete("endLine"),
+                "last_column"  => o.delete("endColumn"),
+                "line"         => line,
+                "column"       => column,
+              }
+
+              o
+            end,
+          }
+        end
+      end
     end
 
-    class RubocopResults
-      def initialize(json)
-        @metadata = json["metadata"]
-        @file_offenses = {}
-        json["files"].each do |f|
+    def json_result!(result)
+      # An exit status of 1 just means violations were found; other numbers mean
+      # execution errors.
+      # JSON needs to be at least 2 characters.
+      result.assert_success! if !(0..1).cover?(result.status.exitstatus) || result.stdout.length < 2
+
+      JSON.parse(result.stdout)
+    end
+
+    # Collection of style offenses.
+    class Offenses
+      include Enumerable
+
+      def initialize(paths)
+        @offenses = {}
+        paths.each do |f|
           next if f["offenses"].empty?
 
-          file = File.realpath(f["path"])
-          @file_offenses[file] = f["offenses"].map { |x| RubocopOffense.new(x) }
+          path = Pathname(f["path"]).realpath
+          @offenses[path] = f["offenses"].map { |x| Offense.new(x) }
         end
       end
 
-      def file_offenses(path)
-        @file_offenses.fetch(path.to_s, [])
+      def for_path(path)
+        @offenses.fetch(Pathname(path), [])
+      end
+
+      def each(*args, &block)
+        @offenses.each(*args, &block)
       end
     end
 
-    class RubocopOffense
+    # A style offense.
+    class Offense
       attr_reader :severity, :message, :corrected, :location, :cop_name
 
       def initialize(json)
@@ -155,7 +272,7 @@ module Homebrew
         @message = json["message"]
         @cop_name = json["cop_name"]
         @corrected = json["corrected"]
-        @location = RubocopLineLocation.new(json["location"])
+        @location = LineLocation.new(json["location"])
       end
 
       def severity_code
@@ -165,35 +282,21 @@ module Homebrew
       def corrected?
         @corrected
       end
-
-      def correction_status
-        "[Corrected] " if corrected?
-      end
-
-      def to_s(options = {})
-        if options[:display_cop_name]
-          "#{severity_code}: #{location.to_short_s}: #{cop_name}: " \
-          "#{Tty.green}#{correction_status}#{Tty.reset}#{message}"
-        else
-          "#{severity_code}: #{location.to_short_s}: #{Tty.green}#{correction_status}#{Tty.reset}#{message}"
-        end
-      end
     end
 
-    class RubocopLineLocation
-      attr_reader :line, :column, :length
+    # Source location of a style offense.
+    class LineLocation
+      extend T::Sig
+
+      attr_reader :line, :column
 
       def initialize(json)
         @line = json["line"]
         @column = json["column"]
-        @length = json["length"]
       end
 
+      sig { returns(String) }
       def to_s
-        "#{line}: col #{column} (#{length} chars)"
-      end
-
-      def to_short_s
         "#{line}: col #{column}"
       end
     end

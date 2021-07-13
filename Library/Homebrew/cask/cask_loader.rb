@@ -1,8 +1,16 @@
+# typed: false
+# frozen_string_literal: true
+
+require "cask/cache"
 require "cask/cask"
 require "uri"
 
 module Cask
+  # Loads a cask from various sources.
+  #
+  # @api private
   module CaskLoader
+    # Loads a cask from a string.
     class FromContentLoader
       attr_reader :content
 
@@ -12,8 +20,8 @@ module Cask
         content = ref.to_str
 
         token  = /(?:"[^"]*"|'[^']*')/
-        curly  = /\(\s*#{token}\s*\)\s*\{.*\}/
-        do_end = /\s+#{token}\s+do(?:\s*;\s*|\s+).*end/
+        curly  = /\(\s*#{token.source}\s*\)\s*\{.*\}/
+        do_end = /\s+#{token.source}\s+do(?:\s*;\s*|\s+).*end/
         regex  = /\A\s*cask(?:#{curly.source}|#{do_end.source})\s*\Z/m
 
         content.match?(regex)
@@ -23,17 +31,20 @@ module Cask
         @content = content.force_encoding("UTF-8")
       end
 
-      def load
+      def load(config:)
+        @config = config
+
         instance_eval(content, __FILE__, __LINE__)
       end
 
       private
 
       def cask(header_token, **options, &block)
-        Cask.new(header_token, **options, &block)
+        Cask.new(header_token, **options, config: @config, &block)
       end
     end
 
+    # Loads a cask from a path.
     class FromPathLoader < FromContentLoader
       def self.can_load?(ref)
         path = Pathname(ref)
@@ -42,60 +53,69 @@ module Cask
 
       attr_reader :token, :path
 
-      def initialize(path)
+      def initialize(path) # rubocop:disable Lint/MissingSuper
         path = Pathname(path).expand_path
 
         @token = path.basename(".rb").to_s
         @path = path
       end
 
-      def load
+      def load(config:)
         raise CaskUnavailableError.new(token, "'#{path}' does not exist.")  unless path.exist?
         raise CaskUnavailableError.new(token, "'#{path}' is not readable.") unless path.readable?
         raise CaskUnavailableError.new(token, "'#{path}' is not a file.")   unless path.file?
 
-        @content = IO.read(path)
+        @content = path.read(encoding: "UTF-8")
+        @config = config
 
         begin
           instance_eval(content, path).tap do |cask|
-            unless cask.is_a?(Cask)
-              raise CaskUnreadableError.new(token, "'#{path}' does not contain a cask.")
-            end
+            raise CaskUnreadableError.new(token, "'#{path}' does not contain a cask.") unless cask.is_a?(Cask)
           end
         rescue NameError, ArgumentError, ScriptError => e
-          raise CaskUnreadableError.new(token, e.message)
+          error = CaskUnreadableError.new(token, e.message)
+          error.set_backtrace e.backtrace
+          raise error
         end
       end
 
       private
 
       def cask(header_token, **options, &block)
-        if token != header_token
-          raise CaskTokenMismatchError.new(token, header_token)
-        end
+        raise CaskTokenMismatchError.new(token, header_token) if token != header_token
 
         super(header_token, **options, sourcefile_path: path, &block)
       end
     end
 
+    # Loads a cask from a URI.
     class FromURILoader < FromPathLoader
+      extend T::Sig
+
       def self.can_load?(ref)
         uri_regex = ::URI::DEFAULT_PARSER.make_regexp
-        ref.to_s.match?(Regexp.new('\A' + uri_regex.source + '\Z', uri_regex.options))
+        return false unless ref.to_s.match?(Regexp.new("\\A#{uri_regex.source}\\Z", uri_regex.options))
+
+        uri = URI(ref)
+        return false unless uri
+        return false unless uri.path
+
+        true
       end
 
       attr_reader :url
 
+      sig { params(url: T.any(URI::Generic, String)).void }
       def initialize(url)
         @url = URI(url)
         super Cache.path/File.basename(@url.path)
       end
 
-      def load
+      def load(config:)
         path.dirname.mkpath
 
         begin
-          ohai "Downloading #{url}."
+          ohai "Downloading #{url}"
           curl_download url, to: path
         rescue ErrorDuringExecution
           raise CaskUnavailableError.new(token, "Failed to download #{Formatter.url(url)}.")
@@ -105,6 +125,7 @@ module Cask
       end
     end
 
+    # Loads a cask from a tap path.
     class FromTapPathLoader < FromPathLoader
       def self.can_load?(ref)
         super && !Tap.from_path(ref).nil?
@@ -124,6 +145,7 @@ module Cask
       end
     end
 
+    # Loads a cask from a specific tap.
     class FromTapLoader < FromTapPathLoader
       def self.can_load?(ref)
         ref.to_s.match?(HOMEBREW_TAP_CASK_REGEX)
@@ -134,16 +156,15 @@ module Cask
         super Tap.fetch(user, repo).cask_dir/"#{token}.rb"
       end
 
-      def load
-        tap.install unless tap.installed?
+      def load(config:)
+        raise TapCaskUnavailableError.new(tap, token) unless tap.installed?
 
         super
       end
     end
 
+    # Loads a cask from an existing {Cask} instance.
     class FromInstanceLoader
-      attr_reader :cask
-
       def self.can_load?(ref)
         ref.is_a?(Cask)
       end
@@ -152,22 +173,26 @@ module Cask
         @cask = cask
       end
 
-      def load
-        cask
+      def load(config:)
+        @cask
       end
     end
 
+    # Pseudo-loader which raises an error when trying to load the corresponding cask.
     class NullLoader < FromPathLoader
+      extend T::Sig
+
       def self.can_load?(*)
         true
       end
 
+      sig { params(ref: T.any(String, Pathname)).void }
       def initialize(ref)
         token = File.basename(ref, ".rb")
         super CaskLoader.default_path(token)
       end
 
-      def load
+      def load(config:)
         raise CaskUnavailableError.new(token, "No Cask with this name exists.")
       end
     end
@@ -176,8 +201,8 @@ module Cask
       self.for(ref).path
     end
 
-    def self.load(ref)
-      self.for(ref).load
+    def self.load(ref, config: nil)
+      self.for(ref).load(config: config)
     end
 
     def self.for(ref)
@@ -192,9 +217,7 @@ module Cask
         return loader_class.new(ref) if loader_class.can_load?(ref)
       end
 
-      if FromTapPathLoader.can_load?(default_path(ref))
-        return FromTapPathLoader.new(default_path(ref))
-      end
+      return FromTapPathLoader.new(default_path(ref)) if FromTapPathLoader.can_load?(default_path(ref))
 
       case (possible_tap_casks = tap_paths(ref)).count
       when 1
@@ -209,9 +232,7 @@ module Cask
       end
 
       possible_installed_cask = Cask.new(ref)
-      if possible_installed_cask.installed?
-        return FromPathLoader.new(possible_installed_cask.installed_caskfile)
-      end
+      return FromPathLoader.new(possible_installed_cask.installed_caskfile) if possible_installed_cask.installed?
 
       NullLoader.new(ref)
     end

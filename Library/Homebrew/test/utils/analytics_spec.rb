@@ -1,25 +1,30 @@
+# typed: false
+# frozen_string_literal: true
+
 require "utils/analytics"
 require "formula_installer"
 
 describe Utils::Analytics do
-  describe "::os_prefix_ci" do
-    context "when os_prefix_ci is not set" do
+  describe "::os_arch_prefix_ci" do
+    context "when os_arch_prefix_ci is not set" do
       before do
-        described_class.clear_os_prefix_ci
+        described_class.clear_os_arch_prefix_ci
       end
 
       it "returns OS_VERSION and prefix when HOMEBREW_PREFIX is a custom prefix" do
+        allow(Hardware::CPU).to receive(:type).and_return(:intel)
         allow(Homebrew).to receive(:default_prefix?).and_return(false)
-        expect(described_class.os_prefix_ci).to include("#{OS_VERSION}, #{described_class.custom_prefix_label}")
+        expect(described_class.os_arch_prefix_ci).to include("#{OS_VERSION}, #{described_class.custom_prefix_label}")
       end
 
       it "does not include prefix when HOMEBREW_PREFIX is the default prefix" do
-        expect(described_class.os_prefix_ci).not_to include(described_class.custom_prefix_label)
+        allow(Homebrew).to receive(:default_prefix?).and_return(true)
+        expect(described_class.os_arch_prefix_ci).not_to include(described_class.custom_prefix_label)
       end
 
       it "includes CI when ENV['CI'] is set" do
         ENV["CI"] = "true"
-        expect(described_class.os_prefix_ci).to include("CI")
+        expect(described_class.os_arch_prefix_ci).to include("CI")
       end
     end
   end
@@ -83,5 +88,12 @@ describe Utils::Analytics do
         expect(described_class.report_build_error(err)).to be_nil
       end
     end
+  end
+
+  specify "::table_output" do
+    results = { ack: 10, wget: 100 }
+    expect { described_class.table_output("install", "30", results) }
+      .to output(/110 |  100.00%/).to_stdout
+      .and not_to_output.to_stderr
   end
 end

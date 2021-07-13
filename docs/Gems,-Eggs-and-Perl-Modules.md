@@ -7,8 +7,8 @@ add-ons available to all users:
 * `/Library/Python`
 * `/Library/Perl`
 
-Starting with OS X Lion (10.7), you need `sudo` to install to these like
-so: `sudo gem install`, `sudo easy_install` or `sudo cpan -i`.
+You need `sudo` to install to these like so: `sudo gem install`,
+`sudo easy_install` or `sudo cpan -i`.
 
 An option to avoid sudo is to use an access control list. For example:
 
@@ -27,25 +27,7 @@ writable location. But if you installed Homebrew as we recommend,
 `/usr/local` will be writable without sudo. So now you are good to
 install the development tools you need without risking the use of sudo.
 
-## Python packages (eggs) without sudo
-
-Rather than changing the rights on `/Library/Python`, we recommend the
-following options:
-
-### With a brewed Python
-Note, `easy_install` is deprecated. We install `pip` (or `pip2` for
-Python 2) along with python/python2.
-
-We set up distutils such that `pip install` will always put modules in
-`$(brew --prefix)/lib/pythonX.Y/site-packages` and scripts in
-`$(brew --prefix)/share/python`. Therefore, you won’t need sudo!
-
-Do `brew info python` or `brew info python@2` for precise information
-about the paths. Note, a brewed Python still searches for modules in
-`/Library/Python/X.Y/site-packages` and also in
-`~/Library/Python/X.Y/lib/python/site-packages`.
-
-### With system’s Python
+### Python packages (eggs) without sudo using system’s Python
 _This is only recommended if you **don't** use a brewed Python._
 
 On macOS, any [Python version X.Y also searches in
@@ -66,7 +48,7 @@ following content:
 install_lib = ~/Library/Python/$py_version_short/lib/python/site-packages
 ```
 
-### Using virtualenv (works with brewed and system’s Python)
+### Using virtualenv (with system Python)
 
 [Virtualenv](https://virtualenv.pypa.io/) ships `pip` and
 creates isolated Python environments with separate site-packages,
@@ -116,7 +98,7 @@ If you ever did a `sudo gem`, etc. before then a lot of files will have
 been created owned by root. Fix with:
 
 ```sh
-sudo chown -R $USER /Library/Ruby /Library/Perl /Library/Python
+sudo chown -R $(whoami) /Library/Ruby /Library/Perl /Library/Python
 ```
 
 ## Perl CPAN modules without sudo
@@ -132,7 +114,7 @@ sudo cpan local::lib
 
 Note that this will install some other dependencies like `Module::Install`.
 Then put the appropriate incantation in your shell’s startup, e.g. for
-`.bash_profile` you insert the below, for others see the
+`.profile` you insert the below, for others see the
 [`local::lib`](https://metacpan.org/pod/local::lib) docs.
 
 ```sh

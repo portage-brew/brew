@@ -1,21 +1,24 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Cask, :cask do
   let(:cask) { described_class.new("versioned-cask") }
 
   context "when multiple versions are installed" do
     describe "#versions" do
-      context "and there are duplicate versions" do
+      context "when there are duplicate versions" do
         it "uses the last unique version" do
           allow(cask).to receive(:timestamped_versions).and_return([
-                                                                     ["1.2.2", "0999"],
-                                                                     ["1.2.3", "1000"],
-                                                                     ["1.2.2", "1001"],
-                                                                   ])
+            ["1.2.2", "0999"],
+            ["1.2.3", "1000"],
+            ["1.2.2", "1001"],
+          ])
 
           expect(cask).to receive(:timestamped_versions)
           expect(cask.versions).to eq([
-                                        "1.2.3",
-                                        "1.2.2",
-                                      ])
+            "1.2.3",
+            "1.2.2",
+          ])
         end
       end
     end
@@ -28,23 +31,23 @@ describe Cask::Cask, :cask do
 
     it "returns an instance of the Cask for the given token" do
       c = Cask::CaskLoader.load("local-caffeine")
-      expect(c).to be_kind_of(Cask::Cask)
+      expect(c).to be_kind_of(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
     it "returns an instance of the Cask from a specific file location" do
       c = Cask::CaskLoader.load("#{tap_path}/Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(Cask::Cask)
+      expect(c).to be_kind_of(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
-    it "returns an instance of the Cask from a url" do
+    it "returns an instance of the Cask from a URL" do
       c = Cask::CaskLoader.load("file://#{tap_path}/Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(Cask::Cask)
+      expect(c).to be_kind_of(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
-    it "raises an error when failing to download a Cask from a url" do
+    it "raises an error when failing to download a Cask from a URL" do
       expect {
         url = "file://#{tap_path}/Casks/notacask.rb"
 
@@ -54,7 +57,7 @@ describe Cask::Cask, :cask do
 
     it "returns an instance of the Cask from a relative file location" do
       c = Cask::CaskLoader.load(relative_tap_path/"Casks/local-caffeine.rb")
-      expect(c).to be_kind_of(Cask::Cask)
+      expect(c).to be_kind_of(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
@@ -132,7 +135,7 @@ describe Cask::Cask, :cask do
         expectations.each do |installed_version, expected_output|
           context "when versions #{installed_version} are installed and the " \
                   "tap version is #{tap_version}, #{"not" unless greedy} greedy" do
-            subject { cask.outdated_versions greedy }
+            subject { cask.outdated_versions(greedy: greedy) }
 
             it {
               allow(cask).to receive(:versions).and_return(installed_version)
@@ -183,7 +186,7 @@ describe Cask::Cask, :cask do
     end
 
     context "when it is from no known tap" do
-      it "retuns the cask token" do
+      it "returns the cask token" do
         file = Tempfile.new(%w[tapless-cask .rb])
 
         begin

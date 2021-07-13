@@ -1,8 +1,11 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Artifact::Installer, :cask do
   subject(:installer) { described_class.new(cask, **args) }
 
   let(:staged_path) { mktmpdir }
-  let(:cask) { instance_double(Cask::Cask, staged_path: staged_path, config: nil) }
+  let(:cask) { instance_double(Cask::Cask, staged_path: staged_path) }
 
   let(:command) { SystemCommand }
 
@@ -15,7 +18,7 @@ describe Cask::Artifact::Installer, :cask do
       it "shows a message prompting to run the installer manually" do
         expect {
           installer.install_phase(command: command)
-        }.to output(%r{run the installer at\s+'#{staged_path}/installer'}).to_stdout
+        }.to output(%r{run the installer at:\s+#{staged_path}/installer}).to_stdout
       end
     end
 

@@ -1,3 +1,9 @@
+# typed: false
+# frozen_string_literal: true
+
+# Helper module for making a class searchable with both regular expressions and strings.
+#
+# @api private
 module Searchable
   def search(string_or_regex, &block)
     case string_or_regex
@@ -17,7 +23,7 @@ module Searchable
   def search_regex(regex)
     select do |*args|
       args = yield(*args) if block_given?
-      args = [*args].compact
+      args = Array(args).compact
       args.any? { |arg| arg.match?(regex) }
     end
   end
@@ -26,7 +32,7 @@ module Searchable
     simplified_string = simplify_string(string)
     select do |*args|
       args = yield(*args) if block_given?
-      args = [*args].compact
+      args = Array(args).compact
       args.any? { |arg| simplify_string(arg).include?(simplified_string) }
     end
   end

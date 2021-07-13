@@ -1,4 +1,4 @@
-# Bottles (binary packages)
+# Bottles (Binary Packages)
 
 Bottles are produced by installing a formula with `brew install --build-bottle <formula>` and then bottling it with `brew bottle <formula>`. This outputs the bottle DSL which should be inserted into the formula file.
 
@@ -8,9 +8,9 @@ If a bottle is available and usable it will be downloaded and poured automatical
 Bottles will not be used if the user requests it (see above), if the formula requests it (with `pour_bottle?`), if any options are specified during installation (bottles are all compiled with default options), if the bottle is not up to date (e.g. lacking a checksum) or if the bottle's `cellar` is not `:any` nor equal to the current `HOMEBREW_CELLAR`.
 
 ## Creation
-Bottles are created using the [Brew Test Bot](Brew-Test-Bot.md). This happens mostly when people submit pull requests to Homebrew and the `bottle do` block is updated by maintainers when they `brew pull --bottle` the contents of a pull request. For the Homebrew organisations' taps they are uploaded to and downloaded from [Bintray](https://bintray.com/homebrew).
+Bottles are created using the [Brew Test Bot](Brew-Test-Bot.md), usually when people submit pull requests to Homebrew. The `bottle do` block is updated by maintainers when they merge a pull request. For the Homebrew organisations' taps they are uploaded to and downloaded from [GitHub Packages](https://github.com/orgs/Homebrew/packages).
 
-By default, bottles will be built for the oldest CPU supported by the OS/architecture you're building for (Core 2 for 64-bit OSs). This ensures that bottles are compatible with all computers you might distribute them to. If you *really* want your bottles to be optimized for something else, you can pass the `--bottle-arch=` option to build for another architecture; for example, `brew install foo --build-bottle --bottle-arch=penryn`. Just remember that if you build for a newer architecture some of your users might get binaries they can't run and that would be sad!
+By default, bottles will be built for the oldest CPU supported by the OS/architecture you're building for (Core 2 for 64-bit OSs). This ensures that bottles are compatible with all computers you might distribute them to. If you *really* want your bottles to be optimised for something else, you can pass the `--bottle-arch=` option to build for another architecture; for example, `brew install foo --build-bottle --bottle-arch=penryn`. Just remember that if you build for a newer architecture some of your users might get binaries they can't run and that would be sad!
 
 ## Format
 Bottles are simple gzipped tarballs of compiled binaries. Any metadata is stored in a formula's bottle DSL and in the bottle filename (i.e. macOS version, revision).
@@ -22,9 +22,10 @@ A simple (and typical) example:
 
 ```ruby
 bottle do
-  sha256 "4921af80137af9cc3d38fd17c9120da882448a090b0a8a3a19af3199b415bfca" => :sierra
-  sha256 "c71db15326ee9196cd98602e38d0b7fb2b818cdd48eede4ee8eb827d809e09ba" => :el_capitan
-  sha256 "85cc828a96735bdafcf29eb6291ca91bac846579bcef7308536e0c875d6c81d7" => :yosemite
+  sha256 arm64_big_sur: "a9ae578b05c3da46cedc07dd428d94a856aeae7f3ef80a0f405bf89b8cde893a"
+  sha256 big_sur:       "5dc376aa20241233b76e2ec2c1d4e862443a0250916b2838a1ff871e8a6dc2c5"
+  sha256 catalina:      "924afbbc16549d8c2b80544fd03104ff8c17a4b1460238e3ed17a1313391a2af"
+  sha256 mojave:        "678d338adc7d6e8c352800fe03fc56660c796bd6da23eda2b1411fed18bd0d8d"
 end
 ```
 
@@ -33,12 +34,11 @@ A full example:
 ```ruby
 bottle do
   root_url "https://example.com"
-  prefix "/opt/homebrew"
-  cellar "/opt/homebrew/Cellar"
   rebuild 4
-  sha256 "4921af80137af9cc3d38fd17c9120da882448a090b0a8a3a19af3199b415bfca" => :sierra
-  sha256 "c71db15326ee9196cd98602e38d0b7fb2b818cdd48eede4ee8eb827d809e09ba" => :el_capitan
-  sha256 "85cc828a96735bdafcf29eb6291ca91bac846579bcef7308536e0c875d6c81d7" => :yosemite
+  sha256 cellar: "/opt/homebrew/Cellar", arm64_big_sur: "a9ae578b05c3da46cedc07dd428d94a856aeae7f3ef80a0f405bf89b8cde893a"
+  sha256 cellar: :any,                   big_sur:       "5dc376aa20241233b76e2ec2c1d4e862443a0250916b2838a1ff871e8a6dc2c5"
+  sha256                                 catalina:      "924afbbc16549d8c2b80544fd03104ff8c17a4b1460238e3ed17a1313391a2af"
+  sha256                                 mojave:        "678d338adc7d6e8c352800fe03fc56660c796bd6da23eda2b1411fed18bd0d8d"
 end
 ```
 
@@ -49,10 +49,6 @@ By default this is omitted and the Homebrew default bottle URL root is used. Thi
 ### Cellar (`cellar`)
 Optionally contains the value of `HOMEBREW_CELLAR` in which the bottles were built.
 Most compiled software contains references to its compiled location so cannot be simply relocated anywhere on disk. If this value is `:any` or `:any_skip_relocation` this means that the bottle can be safely installed in any Cellar as it did not contain any references to its installation Cellar. This can be omitted if a bottle is compiled (as all default Homebrew ones are) for the default `HOMEBREW_CELLAR` of `/usr/local/Cellar`.
-
-### Prefix (`prefix`)
-Optionally contains the value of `HOMEBREW_PREFIX` in which the bottles were built.
-See description of `cellar`. When `cellar` is `:any` or `:any_skip_relocation` the prefix should be omitted.
 
 ### Rebuild version (`rebuild`)
 Optionally contains the rebuild version of the bottle.
@@ -72,7 +68,13 @@ A full example:
 
 ```ruby
 pour_bottle? do
-  reason "The bottle needs the Xcode CLT to be installed."
-  satisfy { MacOS::CLT.installed? }
+  reason "The bottle needs to be installed into #{Homebrew::DEFAULT_PREFIX}."
+  satisfy { HOMEBREW_PREFIX.to_s == Homebrew::DEFAULT_PREFIX }
 end
+```
+
+Commonly used `pour_bottle?` conditions can be added as preset symbols to the `pour_bottle?` method, allowing them to be specified like this:
+
+```ruby
+pour_bottle? only_if: :clt_installed
 ```

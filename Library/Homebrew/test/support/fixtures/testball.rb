@@ -1,5 +1,9 @@
+# typed: true
+# frozen_string_literal: true
+
 class Testball < Formula
-  def initialize(name = "testball", path = Pathname.new(__FILE__).expand_path, spec = :stable, alias_path: nil)
+  def initialize(name = "testball", path = Pathname.new(__FILE__).expand_path, spec = :stable,
+                 alias_path: nil, force_bottle: false)
     self.class.instance_eval do
       stable.url "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
       stable.sha256 TESTBALL_SHA256

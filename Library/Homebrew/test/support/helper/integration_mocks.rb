@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 module Homebrew
   module Diagnostic
     class Checks

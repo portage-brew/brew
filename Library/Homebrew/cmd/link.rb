@@ -1,114 +1,126 @@
-#:  * `ln`, `link` [`--overwrite`] [`--dry-run`] [`--force`] <formula>:
-#:    Symlink all of <formula>'s installed files into the Homebrew prefix. This
-#:    is done automatically when you install formulae but can be useful for DIY
-#:    installations.
-#:
-#:    If `--overwrite` is passed, Homebrew will delete files which already exist in
-#:    the prefix while linking.
-#:
-#:    If `--dry-run` or `-n` is passed, Homebrew will list all files which would
-#:    be linked or which would be deleted by `brew link --overwrite`, but will not
-#:    actually link or delete any files.
-#:
-#:    If `--force` (or `-f`) is passed, Homebrew will allow keg-only formulae to be linked.
+# typed: true
+# frozen_string_literal: true
 
 require "ostruct"
 require "caveats"
-require "cli_parser"
+require "cli/parser"
+require "unlink"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def link_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `ln`, `link` <options> <formula>
-
-        Symlink all of <formula>'s installed files into the Homebrew prefix. This
+      description <<~EOS
+        Symlink all of <formula>'s installed files into Homebrew's prefix. This
         is done automatically when you install formulae but can be useful for DIY
         installations.
       EOS
       switch "--overwrite",
-        description: "Delete files already existing in the prefix while linking."
+             description: "Delete files that already exist in the prefix while linking."
       switch "-n", "--dry-run",
-        description: "List all files which would be linked or deleted by "\
-                     "`brew link --overwrite`, but will not actually link or delete any files."
-      switch :force,
-        description: "Allow only key-only formulae to be linked."
-      switch :verbose
-      switch :debug
+             description: "List files which would be linked or deleted by "\
+                          "`brew link --overwrite` without actually linking or deleting any files."
+      switch "-f", "--force",
+             description: "Allow keg-only formulae to be linked."
+      switch "--HEAD",
+             description: "Link the HEAD version of the formula if it is installed."
+
+      named_args :installed_formula, min: 1
     end
   end
 
   def link
-    link_args.parse
+    args = link_args.parse
 
-    raise KegUnspecifiedError if ARGV.named.empty?
+    options = {
+      overwrite: args.overwrite?,
+      dry_run:   args.dry_run?,
+      verbose:   args.verbose?,
+    }
 
-    mode = OpenStruct.new
+    kegs = if args.HEAD?
+      args.named.to_kegs.group_by(&:name).map do |name, resolved_kegs|
+        head_keg = resolved_kegs.find { |keg| keg.version.head? }
+        next head_keg if head_keg.present?
 
-    mode.overwrite = true if args.overwrite?
-    mode.dry_run = true if args.dry_run?
+        opoo <<~EOS
+          No HEAD keg installed for #{name}
+          To install, run:
+            brew install --HEAD #{name}
+        EOS
+      end.compact
+    else
+      args.named.to_latest_kegs
+    end
 
-    ARGV.kegs.each do |keg|
+    kegs.freeze.each do |keg|
       keg_only = Formulary.keg_only?(keg.rack)
 
       if keg.linked?
         opoo "Already linked: #{keg}"
-        name_and_flag = if keg_only
-          "--force #{keg.name}"
-        else
-          keg.name
-        end
-        puts "To relink: brew unlink #{keg.name} && brew link #{name_and_flag}"
+        name_and_flag = "#{"--HEAD " if args.HEAD?}#{"--force " if keg_only}#{keg.name}"
+        puts <<~EOS
+          To relink, run:
+            brew unlink #{keg.name} && brew link #{name_and_flag}
+        EOS
         next
       end
 
-      if mode.dry_run
-        if mode.overwrite
+      if args.dry_run?
+        if args.overwrite?
           puts "Would remove:"
         else
           puts "Would link:"
         end
-        keg.link(mode)
+        keg.link(**options)
         puts_keg_only_path_message(keg) if keg_only
         next
       end
 
+      formula = begin
+        keg.to_formula
+      rescue FormulaUnavailableError
+        # Not all kegs may belong to formulae e.g. with `brew diy`
+        nil
+      end
+
       if keg_only
-        if Homebrew.default_prefix?
-          f = keg.to_formula
-          if f.keg_only_reason.reason == :provided_by_macos
-            caveats = Caveats.new(f)
-            opoo <<~EOS
-              Refusing to link macOS-provided software: #{keg.name}
-              #{caveats.keg_only_text(skip_reason: true).strip}
-            EOS
-            next
-          end
+        if Homebrew.default_prefix? && formula.present? && formula.keg_only_reason.by_macos?
+          caveats = Caveats.new(formula)
+          opoo <<~EOS
+            Refusing to link macOS provided/shadowed software: #{keg.name}
+            #{caveats.keg_only_text(skip_reason: true).strip}
+          EOS
+          next
         end
 
-        unless args.force?
-          opoo "#{keg.name} is keg-only and must be linked with --force"
+        if !args.force? && (formula.blank? || !formula.keg_only_reason.versioned_formula?)
+          opoo "#{keg.name} is keg-only and must be linked with `--force`."
           puts_keg_only_path_message(keg)
           next
         end
       end
+
+      Unlink.unlink_versioned_formulae(formula, verbose: args.verbose?) if formula
 
       keg.lock do
         print "Linking #{keg}... "
         puts if args.verbose?
 
         begin
-          n = keg.link(mode)
+          n = keg.link(**options)
         rescue Keg::LinkError
           puts
           raise
         else
-          puts "#{n} symlinks created"
+          puts "#{n} symlinks created."
         end
 
-        puts_keg_only_path_message(keg) if keg_only && !ARGV.homebrew_developer?
+        puts_keg_only_path_message(keg) if keg_only && !Homebrew::EnvConfig.developer?
       end
     end
   end

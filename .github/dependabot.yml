@@ -9,6 +9,8 @@ updates:
     ignore:
       - dependency-name: actions/stale
       - dependency-name: dessant/lock-threads
+    # Disable these kinds of updates; they're handled upstream:  
+    open-pull-requests-limit: 0
 
   - package-ecosystem: bundler
     directory: /docs
@@ -16,6 +18,8 @@ updates:
       interval: weekly
     allow:
       - dependency-type: all
+    # Disable these kinds of updates; they're handled upstream:  
+    open-pull-requests-limit: 0
 
   - package-ecosystem: bundler
     directory: /Library/Homebrew
@@ -25,3 +29,5 @@ updates:
       - dependency-type: all
     ignore:
       - dependency-name: sorbet-runtime
+    # Disable these kinds of updates; they're handled upstream:  
+    open-pull-requests-limit: 0

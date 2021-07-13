@@ -283,6 +283,10 @@ If a *`formula`* or *`cask`* is provided, show summary of information about it.
 Install a *`formula`* or *`cask`*. Additional options specific to a *`formula`* may be
 appended to the command.
 
+If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both *`formula`* and any dependencies installed while
+installing it are built from source even if bottles are available for them, regardless of whether
+`--build-from-source` was passed or not.
+
 Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for
 the installed formulae or, every 30 days, for all formulae.
 
@@ -479,6 +483,10 @@ all items or checking if any current formulae/casks have Ruby issues.
 Uninstall and then reinstall a *`formula`* or *`cask`* using the same options it was
 originally installed with, plus any appended options specific to a *`formula`*.
 
+If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both *`formula`* and any dependencies reinstalled while
+reinstalling it are built from source even if bottles are available for them, regardless of whether
+`--build-from-source` was passed or not.
+
 Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
 reinstalled formulae or, every 30 days, for all formulae.
 
@@ -647,6 +655,10 @@ Fetch and reset Homebrew and all tap repositories (or any specified *`repository
 Upgrade outdated casks and outdated, unpinned formulae using the same options they were originally
 installed with, plus any appended brew formula options. If *`cask`* or *`formula`* are specified,
 upgrade only the given *`cask`* or *`formula`* kegs (unless they are pinned; see `pin`, `unpin`).
+
+If `HOMEBREW_BUILD_FROM_SOURCE` is set, then both *`formula`* and any dependencies upgraded while
+upgrading it are built from source even if bottles are available for them, regardless of whether
+`--build-from-source` was passed or not.
 
 Unless `HOMEBREW_NO_INSTALL_CLEANUP` is set, `brew cleanup` will then be run for the
 upgraded formulae or, every 30 days, for all formulae.
@@ -1872,6 +1884,9 @@ example, run `export HOMEBREW_NO_INSECURE_REDIRECT=1` rather than just
   <br>Use this as the browser when opening project homepages.
 
   *Default:* `$BROWSER` or the OS's default browser.
+
+  * `HOMEBREW_BUILD_FROM_SOURCE`:
+    If set, then all supplied formulae, along with their (recursive) dependencies, are built from source even if bottles are available for them, regardless of whether `--build-from-source` was passed or not.
 
 - `HOMEBREW_CACHE`
   <br>Use this directory as the download cache.

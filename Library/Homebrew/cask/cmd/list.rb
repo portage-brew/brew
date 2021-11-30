@@ -1,62 +1,80 @@
+# typed: false
+# frozen_string_literal: true
+
+require "cask/artifact/relocated"
+
 module Cask
   class Cmd
+    # Cask implementation of the `brew list` command.
+    #
+    # @api private
     class List < AbstractCommand
-      option "-1", :one, false
-      option "--versions", :versions, false
-      option "--full-name", :full_name, false
+      extend T::Sig
 
-      option "-l", (lambda do |*|
-        one = true # rubocop:disable Lint/UselessAssignment
-        opoo "Option -l is obsolete! Implying option -1."
-      end)
-
-      def run
-        args.any? ? list : list_installed
+      def self.parser
+        super do
+          switch "-1",
+                 description: "Force output to be one entry per line."
+          switch "--versions",
+                 description: "Show the version number the listed casks."
+          switch "--full-name",
+                 description: "Print casks with fully-qualified names."
+          switch "--json",
+                 description: "Print a JSON representation of the listed casks. "
+        end
       end
 
-      def list
-        casks.each do |cask|
-          raise CaskNotInstalledError, cask unless cask.installed?
+      sig { void }
+      def run
+        self.class.list_casks(
+          *casks,
+          json:      args.json?,
+          one:       args.public_send(:"1?"),
+          full_name: args.full_name?,
+          versions:  args.versions?,
+        )
+      end
 
-          if one?
-            puts cask.token
-          elsif versions?
-            puts self.class.format_versioned(cask)
-          else
-            cask = CaskLoader.load(cask.installed_caskfile)
-            self.class.list_artifacts(cask)
+      def self.list_casks(*casks, json: false, one: false, full_name: false, versions: false)
+        output = if casks.any?
+          casks.each do |cask|
+            raise CaskNotInstalledError, cask unless cask.installed?
           end
+        else
+          Caskroom.casks
+        end
+
+        if json
+          puts JSON.pretty_generate(output.map(&:to_h))
+        elsif one
+          puts output.map(&:to_s)
+        elsif full_name
+          puts output.map(&:full_name).sort(&tap_and_name_comparison)
+        elsif versions
+          puts output.map(&method(:format_versioned))
+        elsif !output.empty? && casks.any?
+          output.map(&method(:list_artifacts))
+        elsif !output.empty?
+          puts Formatter.columns(output.map(&:to_s))
         end
       end
 
       def self.list_artifacts(cask)
-        cask.artifacts.group_by(&:class).each do |klass, artifacts|
-          next unless klass.respond_to?(:english_description)
+        cask.artifacts.group_by(&:class).sort_by { |klass, _| klass.english_name }.each do |klass, artifacts|
+          next if [Artifact::Uninstall, Artifact::Zap].include? klass
 
-          ohai klass.english_description, artifacts.map(&:summarize_installed)
-        end
-      end
+          ohai klass.english_name
+          artifacts.each do |artifact|
+            puts artifact.summarize_installed if artifact.respond_to?(:summarize_installed)
+            next if artifact.respond_to?(:summarize_installed)
 
-      def list_installed
-        installed_casks = Caskroom.casks
-
-        if one?
-          puts installed_casks.map(&:to_s)
-        elsif versions?
-          puts installed_casks.map(&self.class.method(:format_versioned))
-        elsif full_name?
-          puts installed_casks.map(&:full_name).sort &tap_and_name_comparison
-        elsif !installed_casks.empty?
-          puts Formatter.columns(installed_casks.map(&:to_s))
+            puts artifact
+          end
         end
       end
 
       def self.format_versioned(cask)
         cask.to_s.concat(cask.versions.map(&:to_s).join(" ").prepend(" "))
-      end
-
-      def self.help
-        "with no args, lists installed Casks; given installed Casks, lists staged files"
       end
     end
   end

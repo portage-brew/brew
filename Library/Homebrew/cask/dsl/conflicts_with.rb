@@ -1,29 +1,37 @@
+# typed: false
+# frozen_string_literal: true
+
+require "delegate"
+
+require "extend/hash_validator"
+using HashValidator
+
 module Cask
   class DSL
-    class ConflictsWith
-      VALID_KEYS = Set.new [
+    # Class corresponding to the `conflicts_with` stanza.
+    #
+    # @api private
+    class ConflictsWith < SimpleDelegator
+      VALID_KEYS = [
         :formula,
         :cask,
         :macos,
         :arch,
         :x11,
         :java,
-      ]
+      ].freeze
 
-      attr_reader *VALID_KEYS
+      def initialize(**options)
+        options.assert_valid_keys!(*VALID_KEYS)
 
-      def initialize(pairs = {})
-        @pairs = pairs
+        conflicts = options.transform_values { |v| Set.new(Array(v)) }
+        conflicts.default = Set.new
 
-        VALID_KEYS.each do |key|
-          instance_variable_set("@#{key}", Set.new)
-        end
+        super(conflicts)
+      end
 
-        pairs.each do |key, value|
-          raise "invalid conflicts_with key: '#{key.inspect}'" unless VALID_KEYS.include?(key)
-
-          instance_variable_set("@#{key}", instance_variable_get("@#{key}").merge([*value]))
-        end
+      def to_json(generator)
+        transform_values(&:to_a).to_json(generator)
       end
     end
   end

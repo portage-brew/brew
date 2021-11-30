@@ -1,18 +1,28 @@
+# typed: true
+# frozen_string_literal: true
+
+# A formula's checksum.
+#
+# @api private
 class Checksum
   extend Forwardable
 
-  attr_reader :hash_type, :hexdigest
+  attr_reader :hexdigest
 
-  TYPES = [:sha256].freeze
-
-  def initialize(hash_type, hexdigest)
-    @hash_type = hash_type
-    @hexdigest = hexdigest
+  def initialize(hexdigest)
+    @hexdigest = hexdigest.downcase
   end
 
-  delegate [:empty?, :to_s] => :@hexdigest
+  delegate [:empty?, :to_s, :length, :[]] => :@hexdigest
 
   def ==(other)
-    hash_type == other&.hash_type && hexdigest == other.hexdigest
+    case other
+    when String
+      to_s == other.downcase
+    when Checksum
+      hexdigest == other.hexdigest
+    else
+      false
+    end
   end
 end

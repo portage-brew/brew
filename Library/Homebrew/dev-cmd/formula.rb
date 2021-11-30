@@ -1,29 +1,35 @@
-#:  * `formula` <formulae>:
-#:    Display the path where a formula is located.
+# typed: true
+# frozen_string_literal: true
 
 require "formula"
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def formula_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `formula` <formulae>
-
-        Display the path where a formula is located.
+      description <<~EOS
+        Display the path where <formula> is located.
       EOS
-      switch :verbose
-      switch :debug
+
+      named_args :formula, min: 1
     end
   end
 
   def formula
-    formula_args.parse
+    args = formula_args.parse
 
-    raise FormulaUnspecifiedError if ARGV.named.empty?
-
-    ARGV.resolved_formulae.each { |f| puts f.path }
+    formula_paths = args.named.to_paths(only: :formula).select(&:exist?)
+    if formula_paths.blank? && args.named
+                                   .to_paths(only: :cask)
+                                   .select(&:exist?)
+                                   .present?
+      odie "Found casks but did not find formulae!"
+    end
+    formula_paths.each(&method(:puts))
   end
 end

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Artifact::PreflightBlock, :cask do
   describe "install_phase" do
     it "calls the specified block before installing, passing a Cask mini-dsl" do

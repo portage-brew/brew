@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require_relative "shared_examples"
 
 describe UnpackStrategy::Directory do
@@ -7,6 +10,8 @@ describe UnpackStrategy::Directory do
     mktmpdir.tap do |path|
       FileUtils.touch path/"file"
       FileUtils.ln_s "file", path/"symlink"
+      FileUtils.mkdir path/"folder"
+      FileUtils.ln_s "folder", path/"folderSymlink"
     end
   }
 
@@ -15,6 +20,11 @@ describe UnpackStrategy::Directory do
   it "does not follow symlinks" do
     strategy.extract(to: unpack_dir)
     expect(unpack_dir/"symlink").to be_a_symlink
+  end
+
+  it "does not follow top level symlinks to directories" do
+    strategy.extract(to: unpack_dir)
+    expect(unpack_dir/"folderSymlink").to be_a_symlink
   end
 
   it "preserves permissions of contained files" do

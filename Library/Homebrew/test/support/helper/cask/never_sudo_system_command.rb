@@ -1,3 +1,6 @@
+# typed: true
+# frozen_string_literal: true
+
 require "system_command"
 
 class NeverSudoSystemCommand < SystemCommand

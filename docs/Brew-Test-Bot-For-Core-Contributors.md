@@ -2,25 +2,22 @@
 
 If a build has run and passed on `brew test-bot` then it can be used to quickly bottle formulae.
 
-There are two types of Jenkins jobs you will interact with:
-
-## [Homebrew Core Pull Requests](https://jenkins.brew.sh/job/Homebrew%20Core%20Pull%20Requests/)
-This job automatically builds any pull requests submitted to Homebrew/homebrew-core. On success or failure it updates the pull request status (see more details on the [main Brew Test Bot documentation page](Brew-Test-Bot.md)). On a successful build it automatically uploads bottles.
-
-## [Homebrew Testing](https://jenkins.brew.sh/job/Homebrew%20Testing/)
-This job is manually triggered to run [`brew test-bot`](https://github.com/Homebrew/homebrew-test-bot/blob/master/cmd/brew-test-bot.rb) with user-specified parameters. On a successful build it automatically uploads bottles.
-
-You can manually start this job with parameters to run [`brew test-bot`](https://github.com/Homebrew/homebrew-test-bot/blob/master/cmd/brew-test-bot.rb) with the same parameters. It's often useful to pass a pull request URL, a commit URL, a commit SHA-1 and/or formula names to have the Brew Test Bot test them, report the results and produce bottles.
-
 ## Bottling
-To pull and bottle a pull request with `brew pull`:
+
+If a pull request is correct and doesn't need any modifications to commit messages or otherwise:
+
+1. Review and approve the pull request. Be sure to thank the contributor!
+2. Wait for BrewTestBot to automatically merge the pull request. This happens about once an hour. BrewTestBot will comment if there is a failure.
+
+If a pull request won't be automatically merged by Brew Test Bot (has the labels `do not merge`, `new formula`, or `automerge-skip`), but the [commit messages and commit style](Formula-Cookbook.md#commit) are correct:
 
 1. Ensure the job has already completed successfully.
-2. Run `brew pull --bottle 12345` where `12345` is the pull request number (or URL). If it complains about a missing URL with `BrewTestBot` in it then the bottles have not finished uploading yet; wait and try again later.
-3. Run `git push` to push the commits.
+2. Run `brew pr-publish 12345` where `12345` is the pull request number (or URL).
+    - Approving a PR for an existing formula will automatically publish the bottles and close the PR, taking care of this step.
+3. Watch the [actions queue](https://github.com/Homebrew/homebrew-core/actions) to ensure your job finishes. BrewTestBot will usually notify you of failures with a ping as well.
 
-To bottle a test build:
+If a pull request needs its commit messages changed in a way that autosquash doesn't support (has the label `automerge-skip`):
 
 1. Ensure the job has already completed successfully.
-2. Run `brew pull --bottle https://jenkins.brew.sh/job/Homebrew%20Testing/1234/` where `https://jenkins.brew.sh/job/Homebrew%20Testing/1234/` is the testing build URL in Jenkins.
-3. Run `git push` to push the commits.
+2. Run `brew pr-pull 12345` where `12345` is the pull request number (or URL).
+3. Amend any relevant commits if needed, then run `git push` to push the commits.

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Pkg, :cask do
   describe "#uninstall" do
     let(:fake_system_command) { NeverSudoSystemCommand }
@@ -32,7 +35,7 @@ describe Cask::Pkg, :cask do
       expect(root_dir).not_to exist
     end
 
-    context "pkgutil" do
+    describe "pkgutil" do
       it "forgets the pkg" do
         allow(fake_system_command).to receive(:run!).with(
           "/usr/sbin/pkgutil",
@@ -90,6 +93,15 @@ describe Cask::Pkg, :cask do
       allow(pkg).to receive(:root).and_return(fake_root)
       allow(pkg).to receive(:forget)
 
+      # This is expected to fail in tests since we don't use `sudo`.
+      allow(fake_system_command).to receive(:run!).and_call_original
+      expect(fake_system_command).to receive(:run!).with(
+        "/usr/bin/xargs",
+        args:  ["-0", "--", a_string_including("rmdir")],
+        input: [fake_dir].join("\0"),
+        sudo:  true,
+      ).and_return(instance_double(SystemCommand::Result, stdout: ""))
+
       pkg.uninstall
 
       expect(fake_dir).to be_a_directory
@@ -144,13 +156,18 @@ describe Cask::Pkg, :cask do
     end
 
     it "correctly parses a Property List" do
-      pkg = Cask::Pkg.new(pkg_id, fake_system_command)
+      pkg = described_class.new(pkg_id, fake_system_command)
 
       expect(fake_system_command).to receive(:run!).with(
         "/usr/sbin/pkgutil",
         args: ["--pkg-info-plist", pkg_id],
       ).and_return(
-        SystemCommand::Result.new(nil, [[:stdout, pkg_info_plist]], instance_double(Process::Status, exitstatus: 0)),
+        SystemCommand::Result.new(
+          ["/usr/sbin/pkgutil", "--pkg-info-plist", pkg_id],
+          [[:stdout, pkg_info_plist]],
+          instance_double(Process::Status, exitstatus: 0),
+          secrets: [],
+        ),
       )
 
       info = pkg.info

@@ -7,10 +7,12 @@ exclude:
   - bin
   - CNAME
   - Gemfile*
+  - vale-styles
   - vendor
 
 plugins:
   - jekyll-feed
+  - jekyll-redirect-from
   - jekyll-remote-theme
   - jekyll-seo-tag
   - jekyll-sitemap
@@ -22,6 +24,8 @@ defaults:
       path: ""
     values:
       image: /assets/img/homebrew-256x256.png
+      search_name: Documentation
+      search_site: docs
 
 logo: /assets/img/homebrew-256x256.png
 

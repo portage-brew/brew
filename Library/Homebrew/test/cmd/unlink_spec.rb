@@ -1,11 +1,16 @@
-describe "brew unlink", :integration_test do
-  it "unlinks a Formula" do
-    setup_test_formula "testball"
+# typed: false
+# frozen_string_literal: true
 
-    expect { brew "install", "testball" }.to be_a_success
+require "cmd/shared_examples/args_parse"
 
-    expect { brew "unlink", "--dry-run", "testball" }
-      .to output(/Would remove/).to_stdout
+describe "brew unlink" do
+  it_behaves_like "parseable arguments"
+
+  it "unlinks a Formula", :integration_test do
+    install_test_formula "testball"
+
+    expect { brew "unlink", "testball" }
+      .to output(/Unlinking /).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end

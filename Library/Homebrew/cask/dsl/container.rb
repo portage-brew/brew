@@ -1,20 +1,25 @@
+# typed: true
+# frozen_string_literal: true
+
 require "unpack_strategy"
 
 module Cask
   class DSL
+    # Class corresponding to the `container` stanza.
+    #
+    # @api private
     class Container
-      VALID_KEYS = Set.new [
+      VALID_KEYS = Set.new([
         :type,
         :nested,
-      ]
+      ]).freeze
 
-      attr_accessor(*VALID_KEYS)
-      attr_accessor :pairs
+      attr_accessor(*VALID_KEYS, :pairs)
 
       def initialize(pairs = {})
         @pairs = pairs
         pairs.each do |key, value|
-          raise "invalid container key: '#{key.inspect}'" unless VALID_KEYS.include?(key)
+          raise "invalid container key: #{key.inspect}" unless VALID_KEYS.include?(key)
 
           send(:"#{key}=", value)
         end

@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "rubocops/rubocop-cask"
 require "test/rubocops/cask/shared_examples/cask_cop"
 
@@ -107,7 +110,7 @@ describe RuboCop::Cop::Cask::StanzaOrder do
         line:     3,
         column:   2,
         source:   "uninstall :quit => 'com.example.foo',\n" \
-                "            :kext => 'com.example.foo.kext'",
+                  "            :kext => 'com.example.foo.kext'",
       }, {
         message:  "`version` stanza out of order",
         severity: :convention,
@@ -200,7 +203,7 @@ describe RuboCop::Cop::Cask::StanzaOrder do
         cask 'foo' do
           name 'Foo'
           url 'https://foo.brew.sh/foo.zip'
-          %{caveats}
+          %<caveats>s
           version :latest
           app 'Foo.app'
           sha256 :no_check
@@ -215,7 +218,7 @@ describe RuboCop::Cop::Cask::StanzaOrder do
           url 'https://foo.brew.sh/foo.zip'
           name 'Foo'
           app 'Foo.app'
-          %{caveats}
+          %<caveats>s
         end
       CASK
     end

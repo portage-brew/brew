@@ -1,3 +1,6 @@
+# typed: true
+# frozen_string_literal: true
+
 require "os/mac/version"
 
 module OS
@@ -33,6 +36,8 @@ module OS
       "/Library/Input Methods",
       "/Library/Internet Plug-Ins",
       "/Library/Java",
+      "/Library/Java/Extensions",
+      "/Library/Java/JavaVirtualMachines",
       "/Library/Keyboard Layouts",
       "/Library/Keychains",
       "/Library/LaunchAgents",
@@ -234,6 +239,7 @@ module OS
                   .map(&method(:Pathname))
                   .to_set
                   .freeze
+    private_constant :SYSTEM_DIRS
 
     # TODO: There should be a way to specify a containing
     #       directory under which nothing can be deleted.
@@ -376,6 +382,7 @@ module OS
                         .to_set
                         .union(SYSTEM_DIRS)
                         .freeze
+    private_constant :UNDELETABLE_PATHS
 
     def system_dir?(dir)
       SYSTEM_DIRS.include?(Pathname.new(dir).expand_path)

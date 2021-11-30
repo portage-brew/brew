@@ -1,5 +1,12 @@
-describe "brew options", :integration_test do
-  it "prints a given Formula's options" do
+# typed: false
+# frozen_string_literal: true
+
+require "cmd/shared_examples/args_parse"
+
+describe "brew options" do
+  it_behaves_like "parseable arguments"
+
+  it "prints a given Formula's options", :integration_test do
     setup_test_formula "testball", <<~RUBY
       depends_on "bar" => :recommended
     RUBY

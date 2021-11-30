@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Artifact::Suite, :cask do
   let(:cask) { Cask::CaskLoader.load(cask_path("with-suite")) }
 
@@ -9,7 +12,7 @@ describe Cask::Artifact::Suite, :cask do
     end
   }
 
-  let(:target_path) { Cask::Config.global.appdir.join("Caffeine") }
+  let(:target_path) { cask.config.appdir.join("Caffeine") }
   let(:source_path) { cask.staged_path.join("Caffeine") }
 
   before do

@@ -1,9 +1,14 @@
+# typed: true
+# frozen_string_literal: true
+
 module RuboCop
   module Cask
     module AST
       # This class wraps the AST method node that represents the cask header. It
       # includes various helper methods to aid cops in their analysis.
       class CaskHeader
+        extend T::Sig
+
         def initialize(method_node)
           @method_node = method_node
         end
@@ -22,12 +27,17 @@ module RuboCop
           @source_range ||= method_node.loc.expression
         end
 
+        sig { returns(String) }
         def preferred_header_str
           "cask '#{cask_token}'"
         end
 
         def cask_token
-          @cask_token ||= pair_node.val_node.children.first
+          @cask_token ||= if dsl_version?
+            pair_node.val_node.children.first
+          else
+            method_node.first_argument.str_content
+          end
         end
 
         def hash_node

@@ -1,4 +1,10 @@
+# typed: true
+# frozen_string_literal: true
+
 module Utils
+  # Helper functions for creating symlinks.
+  #
+  # @api private
   module Link
     module_function
 
@@ -30,7 +36,8 @@ module Utils
         Could not link:
         #{conflicts.join("\n")}
 
-        Please delete these paths and run `#{command}`.
+        Please delete these paths and run:
+          #{command}
       EOS
     end
     private_class_method :link_src_dst_dirs

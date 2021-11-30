@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "extend/pathname"
 require "install_renamed"
 
@@ -60,19 +63,6 @@ describe Pathname do
     end
   end
 
-  describe "#write" do
-    it "creates a file and writes to it" do
-      expect(file).not_to exist
-      file.write("CONTENT")
-      expect(File.read(file)).to eq("CONTENT")
-    end
-
-    it "raises an error if the file already exists" do
-      touch file
-      expect { file.write("CONTENT") }.to raise_error(RuntimeError)
-    end
-  end
-
   describe "#append_lines" do
     it "appends lines to a file" do
       touch file
@@ -118,6 +108,7 @@ describe Pathname do
 
   describe "#ensure_writable" do
     it "makes a file writable and restores permissions afterwards" do
+      skip "User is root so everything is writable." if Process.euid.zero?
       touch file
       chmod 0555, file
       expect(file).not_to be_writable
@@ -244,11 +235,19 @@ describe Pathname do
       dst.install_symlink "foo" => "bar"
       expect((dst/"bar").readlink).to eq(described_class.new("foo"))
     end
+
+    it "can install relative symlinks in a symlinked directory" do
+      mkdir_p dst/"1/2"
+      dst.install_symlink "1/2" => "12"
+      expect((dst/"12").readlink).to eq(described_class.new("1/2"))
+      (dst/"12").install_symlink dst/"foo"
+      expect((dst/"12/foo").readlink).to eq(described_class.new("../../foo"))
+    end
   end
 
   describe InstallRenamed do
     before do
-      dst.extend(InstallRenamed)
+      dst.extend(described_class)
     end
 
     it "renames the installed file if it already exists" do

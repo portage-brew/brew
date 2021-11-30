@@ -1,58 +1,62 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Artifact::App, :cask do
   describe "multiple apps" do
     let(:cask) { Cask::CaskLoader.load(cask_path("with-two-apps-correct")) }
 
     let(:install_phase) {
-      lambda do
-        cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
-          artifact.install_phase(command: NeverSudoSystemCommand, force: false)
-        end
+      cask.artifacts.select { |a| a.is_a?(described_class) }.each do |artifact|
+        artifact.install_phase(command: NeverSudoSystemCommand, force: false)
       end
     }
 
     let(:source_path_mini) { cask.staged_path.join("Caffeine Mini.app") }
-    let(:target_path_mini) { Cask::Config.global.appdir.join("Caffeine Mini.app") }
+    let(:target_path_mini) { cask.config.appdir.join("Caffeine Mini.app") }
 
     let(:source_path_pro) { cask.staged_path.join("Caffeine Pro.app") }
-    let(:target_path_pro) { Cask::Config.global.appdir.join("Caffeine Pro.app") }
+    let(:target_path_pro) { cask.config.appdir.join("Caffeine Pro.app") }
 
     before do
       InstallHelper.install_without_artifacts(cask)
     end
 
     it "installs both apps using the proper target directory" do
-      install_phase.call
+      install_phase
 
       expect(target_path_mini).to be_a_directory
-      expect(source_path_mini).not_to exist
+      expect(source_path_mini).to be_a_symlink
 
       expect(target_path_pro).to be_a_directory
-      expect(source_path_pro).not_to exist
+      expect(source_path_pro).to be_a_symlink
     end
 
     describe "when apps are in a subdirectory" do
       let(:cask) { Cask::CaskLoader.load(cask_path("with-two-apps-subdir")) }
 
+      let(:source_path_mini) { cask.staged_path.join("Caffeines", "Caffeine Mini.app") }
+      let(:source_path_pro) { cask.staged_path.join("Caffeines", "Caffeine Pro.app") }
+
       it "installs both apps using the proper target directory" do
-        install_phase.call
+        install_phase
 
         expect(target_path_mini).to be_a_directory
-        expect(source_path_mini).not_to exist
+        expect(source_path_mini).to be_a_symlink
 
         expect(target_path_pro).to be_a_directory
-        expect(source_path_pro).not_to exist
+        expect(source_path_pro).to be_a_symlink
       end
     end
 
     it "only uses apps when they are specified" do
       FileUtils.cp_r source_path_mini, source_path_mini.sub("Caffeine Mini.app", "Caffeine Deluxe.app")
 
-      install_phase.call
+      install_phase
 
       expect(target_path_mini).to be_a_directory
-      expect(source_path_mini).not_to exist
+      expect(source_path_mini).to be_a_symlink
 
-      expect(Cask::Config.global.appdir.join("Caffeine Deluxe.app")).not_to exist
+      expect(cask.config.appdir.join("Caffeine Deluxe.app")).not_to exist
       expect(cask.staged_path.join("Caffeine Deluxe.app")).to exist
     end
 
@@ -61,7 +65,7 @@ describe Cask::Artifact::App, :cask do
         target_path_mini.mkpath
 
         expect {
-          expect(install_phase).to output(<<~EOS).to_stdout
+          expect { install_phase }.to output(<<~EOS).to_stdout
             ==> Moving App 'Caffeine Pro.app' to '#{target_path_pro}'
           EOS
         }.to raise_error(Cask::CaskError, "It seems there is already an App at '#{target_path_mini}'.")
@@ -75,7 +79,7 @@ describe Cask::Artifact::App, :cask do
         target_path_pro.mkpath
 
         expect {
-          expect(install_phase).to output(<<~EOS).to_stdout
+          expect { install_phase }.to output(<<~EOS).to_stdout
             ==> Moving App 'Caffeine Mini.app' to '#{target_path_mini}'
           EOS
         }.to raise_error(Cask::CaskError, "It seems there is already an App at '#{target_path_pro}'.")

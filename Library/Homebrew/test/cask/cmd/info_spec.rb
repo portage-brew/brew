@@ -1,22 +1,23 @@
-require_relative "shared_examples/requires_cask_token"
-require_relative "shared_examples/invalid_option"
+# typed: false
+# frozen_string_literal: true
+
+require "utils"
 
 describe Cask::Cmd::Info, :cask do
-  it_behaves_like "a command that requires a Cask token"
-  it_behaves_like "a command that handles invalid options"
-
   it "displays some nice info about the specified Cask" do
     expect {
-      described_class.run("local-caffeine")
+      described_class.run("local-transmission")
     }.to output(<<~EOS).to_stdout
-      local-caffeine: 1.2.3
-      https://brew.sh
+      local-transmission: 2.61
+      https://transmissionbt.com/
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-caffeine.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/local-transmission.rb
       ==> Name
-      None
+      Transmission
+      ==> Description
+      BitTorrent client
       ==> Artifacts
-      Caffeine.app (App)
+      Transmission.app (App)
     EOS
   end
 
@@ -27,9 +28,11 @@ describe Cask::Cmd::Info, :cask do
       with-auto-updates: 1.0 (auto_updates)
       https://brew.sh/autoupdates
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-auto-updates.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/with-auto-updates.rb
       ==> Name
       AutoUpdates
+      ==> Description
+      None
       ==> Artifacts
       AutoUpdates.app (App)
     EOS
@@ -39,19 +42,24 @@ describe Cask::Cmd::Info, :cask do
     let(:expected_output) {
       <<~EOS
         local-caffeine: 1.2.3
-        https://brew.sh
+        https://brew.sh/
         Not installed
-        From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-caffeine.rb
+        From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/local-caffeine.rb
         ==> Name
+        None
+        ==> Description
         None
         ==> Artifacts
         Caffeine.app (App)
+
         local-transmission: 2.61
-        https://brew.sh
+        https://transmissionbt.com/
         Not installed
-        From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/local-transmission.rb
+        From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/local-transmission.rb
         ==> Name
         Transmission
+        ==> Description
+        BitTorrent client
         ==> Artifacts
         Transmission.app (App)
       EOS
@@ -69,10 +77,12 @@ describe Cask::Cmd::Info, :cask do
       described_class.run("with-caveats")
     }.to output(<<~EOS).to_stdout
       with-caveats: 1.2.3
-      https://brew.sh
+      https://brew.sh/
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-caveats.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/with-caveats.rb
       ==> Name
+      None
+      ==> Description
       None
       ==> Artifacts
       Caffeine.app (App)
@@ -83,8 +93,7 @@ describe Cask::Cmd::Info, :cask do
 
       Custom text via puts followed by DSL-generated text:
       To use with-caveats, you may need to add the /custom/path/bin directory
-      to your PATH environment variable, eg (for bash shell):
-
+      to your PATH environment variable, e.g. (for Bash shell):
         export PATH=/custom/path/bin:"$PATH"
 
     EOS
@@ -95,10 +104,12 @@ describe Cask::Cmd::Info, :cask do
       described_class.run("with-conditional-caveats")
     }.to output(<<~EOS).to_stdout
       with-conditional-caveats: 1.2.3
-      https://brew.sh
+      https://brew.sh/
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-conditional-caveats.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/with-conditional-caveats.rb
       ==> Name
+      None
+      ==> Description
       None
       ==> Artifacts
       Caffeine.app (App)
@@ -110,10 +121,12 @@ describe Cask::Cmd::Info, :cask do
       described_class.run("with-languages")
     }.to output(<<~EOS).to_stdout
       with-languages: 1.2.3
-      https://brew.sh
+      https://brew.sh/
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/with-languages.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/with-languages.rb
       ==> Name
+      None
+      ==> Description
       None
       ==> Languages
       zh, en-US
@@ -127,10 +140,12 @@ describe Cask::Cmd::Info, :cask do
       described_class.run("without-languages")
     }.to output(<<~EOS).to_stdout
       without-languages: 1.2.3
-      https://brew.sh
+      https://brew.sh/
       Not installed
-      From: https://github.com/Homebrew/homebrew-cask/blob/master/Casks/without-languages.rb
+      From: https://github.com/Homebrew/homebrew-cask/blob/HEAD/Casks/without-languages.rb
       ==> Name
+      None
+      ==> Description
       None
       ==> Artifacts
       Caffeine.app (App)

@@ -1,31 +1,30 @@
-#:  * `pin` <formulae>:
-#:    Pin the specified <formulae>, preventing them from being upgraded when
-#:    issuing the `brew upgrade` <formulae> command. See also `unpin`.
+# typed: true
+# frozen_string_literal: true
 
 require "formula"
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def pin_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `pin` <formulae>
-
-        Pin the specified <formulae>, preventing them from being upgraded when
-        issuing the `brew upgrade` <formulae> command. See also `unpin`.
+      description <<~EOS
+        Pin the specified <formula>, preventing them from being upgraded when
+        issuing the `brew upgrade` <formula> command. See also `unpin`.
       EOS
-      switch :debug
+
+      named_args :installed_formula, min: 1
     end
   end
 
   def pin
-    pin_args.parse
+    args = pin_args.parse
 
-    raise FormulaUnspecifiedError if args.remaining.empty?
-
-    ARGV.resolved_formulae.each do |f|
+    args.named.to_resolved_formulae.each do |f|
       if f.pinned?
         opoo "#{f.name} already pinned"
       elsif !f.pinnable?

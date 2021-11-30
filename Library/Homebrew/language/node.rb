@@ -1,5 +1,14 @@
+# typed: true
+# frozen_string_literal: true
+
 module Language
+  # Helper functions for Node formulae.
+  #
+  # @api public
   module Node
+    extend T::Sig
+
+    sig { returns(String) }
     def self.npm_cache_config
       "cache=#{HOMEBREW_CACHE}/npm_cache"
     end
@@ -10,10 +19,19 @@ module Language
       # fed to `npm install` only symlinks are created linking back to that
       # directory, consequently breaking that assumption. We require a tarball
       # because npm install creates a "real" installation when fed a tarball.
-      output = Utils.popen_read("npm pack --ignore-scripts")
-      if !$CHILD_STATUS.exitstatus.zero? || output.lines.empty?
-        raise "npm failed to pack #{Dir.pwd}"
+      if (package = Pathname("package.json")) && package.exist?
+        begin
+          pkg_json = JSON.parse(package.read)
+        rescue JSON::ParserError
+          opoo "Could not parse package.json!"
+          raise
+        end
+        prepare_removed = pkg_json["scripts"]&.delete("prepare")
+        prepack_removed = pkg_json["scripts"]&.delete("prepack")
+        package.atomic_write(JSON.pretty_generate(pkg_json)) if prepare_removed || prepack_removed
       end
+      output = Utils.popen_read("npm", "pack", "--ignore-scripts")
+      raise "npm failed to pack #{Dir.pwd}" if !$CHILD_STATUS.exitstatus.zero? || output.lines.empty?
 
       output.lines.last.chomp
     end
@@ -40,8 +58,11 @@ module Language
 
       pack = pack_for_installation
 
+      # npm 7 requires that these dirs exist before install
+      (libexec/"lib").mkpath
+
       # npm install args for global style module format installed into libexec
-      %W[
+      args = %W[
         -ddd
         --global
         --build-from-source
@@ -49,8 +70,13 @@ module Language
         --prefix=#{libexec}
         #{Dir.pwd}/#{pack}
       ]
+
+      args << "--unsafe-perm" if Process.uid.zero?
+
+      args
     end
 
+    sig { returns(T::Array[String]) }
     def self.local_npm_install_args
       setup_npm_environment
       # npm install args for local style module format

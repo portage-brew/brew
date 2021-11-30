@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "plist"
 
 require "utils/user"
@@ -8,15 +11,16 @@ using HashValidator
 
 module Cask
   module Artifact
+    # Artifact corresponding to the `pkg` stanza.
+    #
+    # @api private
     class Pkg < AbstractArtifact
-      attr_reader :pkg_relative_path
+      attr_reader :path, :stanza_options
 
       def self.from_args(cask, path, **stanza_options)
         stanza_options.assert_valid_keys!(:allow_untrusted, :choices)
         new(cask, path, **stanza_options)
       end
-
-      attr_reader :path, :stanza_options
 
       def initialize(cask, path, **stanza_options)
         super(cask)
@@ -35,10 +39,17 @@ module Cask
       private
 
       def run_installer(command: nil, verbose: false, **_options)
-        ohai "Running installer for #{cask}; your password may be necessary."
-        ohai "Package installers may write to any location; options such as --appdir are ignored."
+        ohai "Running installer for #{cask}; your password may be necessary.",
+             "Package installers may write to any location; options such as `--appdir` are ignored."
         unless path.exist?
-          raise CaskError, "pkg source file not found: '#{path.relative_path_from(cask.staged_path)}'"
+          pkg = path.relative_path_from(cask.staged_path)
+          pkgs = Pathname.glob(cask.staged_path/"**"/"*.pkg").map { |path| path.relative_path_from(cask.staged_path) }
+
+          message = "Could not find PKG source file '#{pkg}'"
+          message += ", found #{pkgs.map { |path| "'#{path}'" }.to_sentence} instead" if pkgs.any?
+          message += "."
+
+          raise CaskError, message
         end
 
         args = [
@@ -46,9 +57,7 @@ module Cask
           "-target", "/"
         ]
         args << "-verboseR" if verbose
-        if stanza_options.fetch(:allow_untrusted, false)
-          args << "-allowUntrusted"
-        end
+        args << "-allowUntrusted" if stanza_options.fetch(:allow_untrusted, false)
         with_choices_file do |choices_path|
           args << "-applyChoiceChangesXML" << choices_path if choices_path
           env = {
@@ -65,13 +74,11 @@ module Cask
         return yield nil if choices.empty?
 
         Tempfile.open(["choices", ".xml"]) do |file|
-          begin
-            file.write Plist::Emit.dump(choices)
-            file.close
-            yield file.path
-          ensure
-            file.unlink
-          end
+          file.write Plist::Emit.dump(choices)
+          file.close
+          yield file.path
+        ensure
+          file.unlink
         end
       end
     end

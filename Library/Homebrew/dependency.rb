@@ -1,13 +1,22 @@
+# typed: false
+# frozen_string_literal: true
+
 require "dependable"
 
 # A dependency on another Homebrew formula.
+#
+# @api private
 class Dependency
+  extend T::Sig
+
   extend Forwardable
   include Dependable
+  extend Cachable
 
   attr_reader :name, :tags, :env_proc, :option_names
 
-  DEFAULT_ENV_PROC = proc {}
+  DEFAULT_ENV_PROC = proc {}.freeze
+  private_constant :DEFAULT_ENV_PROC
 
   def initialize(name, tags = [], env_proc = DEFAULT_ENV_PROC, option_names = [name])
     raise ArgumentError, "Dependency must have a name!" unless name
@@ -37,7 +46,18 @@ class Dependency
     formula
   end
 
-  delegate installed?: :to_formula
+  def unavailable_core_formula?
+    to_formula
+    false
+  rescue CoreTapFormulaUnavailableError
+    true
+  rescue
+    false
+  end
+
+  def installed?
+    to_formula.latest_version_installed?
+  end
 
   def satisfied?(inherited_options)
     installed? && missing_options(inherited_options).empty?
@@ -56,11 +76,12 @@ class Dependency
     env_proc&.call
   end
 
+  sig { returns(String) }
   def inspect
     "#<#{self.class.name}: #{name.inspect} #{tags.inspect}>"
   end
 
-  # Define marshaling semantics because we cannot serialize @env_proc
+  # Define marshaling semantics because we cannot serialize @env_proc.
   def _dump(*)
     Marshal.dump([name, tags])
   end
@@ -70,49 +91,57 @@ class Dependency
   end
 
   class << self
-    # Expand the dependencies of dependent recursively, optionally yielding
+    extend T::Sig
+
+    # Expand the dependencies of each dependent recursively, optionally yielding
     # `[dependent, dep]` pairs to allow callers to apply arbitrary filters to
     # the list.
     # The default filter, which is applied when a block is not given, omits
-    # optionals and recommendeds based on what the dependent has asked for.
-    def expand(dependent, deps = dependent.deps, &block)
+    # optionals and recommendeds based on what the dependent has asked for
+    def expand(dependent, deps = dependent.deps, cache_key: nil, ignore_missing: false, &block)
       # Keep track dependencies to avoid infinite cyclic dependency recursion.
       @expand_stack ||= []
       @expand_stack.push dependent.name
+
+      if cache_key.present?
+        cache[cache_key] ||= {}
+        return cache[cache_key][cache_id dependent].dup if cache[cache_key][cache_id dependent]
+      end
 
       expanded_deps = []
 
       deps.each do |dep|
         next if dependent.name == dep.name
 
-        # we only care about one level of test dependencies.
-        next if dep.test? && @expand_stack.length > 1
-
-        case action(dependent, dep, &block)
+        case action(dependent, dep, ignore_missing: ignore_missing, &block)
         when :prune
           next
         when :skip
           next if @expand_stack.include? dep.name
 
-          expanded_deps.concat(expand(dep.to_formula, &block))
+          expanded_deps.concat(expand(dep.to_formula, cache_key: cache_key, ignore_missing: ignore_missing, &block))
         when :keep_but_prune_recursive_deps
           expanded_deps << dep
         else
           next if @expand_stack.include? dep.name
 
-          expanded_deps.concat(expand(dep.to_formula, &block))
+          expanded_deps.concat(expand(dep.to_formula, cache_key: cache_key, ignore_missing: ignore_missing, &block))
           expanded_deps << dep
         end
       end
 
-      merge_repeats(expanded_deps)
+      expanded_deps = merge_repeats(expanded_deps)
+      cache[cache_key][cache_id dependent] = expanded_deps.dup if cache_key.present?
+      expanded_deps
     ensure
       @expand_stack.pop
     end
 
-    def action(dependent, dep, &_block)
+    def action(dependent, dep, ignore_missing: false, &block)
       catch(:action) do
-        if block_given?
+        prune if ignore_missing && dep.unavailable_core_formula?
+
+        if block
           yield dependent, dep
         elsif dep.optional? || dep.recommended?
           prune unless dependent.build.with?(dep)
@@ -120,17 +149,20 @@ class Dependency
       end
     end
 
-    # Prune a dependency and its dependencies recursively
+    # Prune a dependency and its dependencies recursively.
+    sig { void }
     def prune
       throw(:action, :prune)
     end
 
-    # Prune a single dependency but do not prune its dependencies
+    # Prune a single dependency but do not prune its dependencies.
+    sig { void }
     def skip
       throw(:action, :skip)
     end
 
-    # Keep a dependency, but prune its dependencies
+    # Keep a dependency, but prune its dependencies.
+    sig { void }
     def keep_but_prune_recursive_deps
       throw(:action, :keep_but_prune_recursive_deps)
     end
@@ -148,6 +180,10 @@ class Dependency
     end
 
     private
+
+    def cache_id(dependent)
+      "#{dependent.full_name}_#{dependent.class}"
+    end
 
     def merge_tags(deps)
       other_tags = deps.flat_map(&:option_tags).uniq
@@ -175,6 +211,7 @@ class Dependency
   end
 end
 
+# A dependency on another Homebrew formula in a specific tap.
 class TapDependency < Dependency
   attr_reader :tap
 

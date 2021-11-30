@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 require "requirements/codesign_requirement"
 
 describe CodesignRequirement do

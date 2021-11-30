@@ -1,20 +1,16 @@
-require "formula"
+# typed: true
+# frozen_string_literal: true
+
+require "compilers"
 require "os/linux/glibc"
+require "system_command"
 
-class SystemConfig
+module SystemConfig
+  include SystemCommand::Mixin
+
+  HOST_RUBY_PATH = "/usr/bin/ruby"
+
   class << self
-    def host_os_version
-      if which("lsb_release")
-        description = `lsb_release -d`.chomp.sub("Description:\t", "")
-        codename = `lsb_release -c`.chomp.sub("Codename:\t", "")
-        "#{description} (#{codename})"
-      elsif (redhat_release = Pathname.new("/etc/redhat-release")).readable?
-        redhat_release.read.chomp
-      else
-        "N/A"
-      end
-    end
-
     def host_glibc_version
       version = OS::Linux::Glibc.system_version
       return "N/A" if version.null?
@@ -37,14 +33,22 @@ class SystemConfig
       "N/A"
     end
 
+    def host_ruby_version
+      out, _, status = system_command(HOST_RUBY_PATH, args: ["-e", "puts RUBY_VERSION"], print_stderr: false)
+      return "N/A" unless status.success?
+
+      out
+    end
+
     def dump_verbose_config(out = $stdout)
       dump_generic_verbose_config(out)
       out.puts "Kernel: #{`uname -mors`.chomp}"
-      out.puts "OS: #{host_os_version}"
+      out.puts "OS: #{OS::Linux.os_version}"
       out.puts "Host glibc: #{host_glibc_version}"
       out.puts "/usr/bin/gcc: #{host_gcc_version}"
-      ["glibc", "gcc", "xorg"].each do |f|
-        out.puts "#{f}: #{formula_linked_version f}"
+      out.puts "/usr/bin/ruby: #{host_ruby_version}" if RUBY_PATH != HOST_RUBY_PATH
+      ["glibc", CompilerSelector.preferred_gcc, "xorg"].each do |f|
+        out.puts "#{f}: #{formula_linked_version(f)}"
       end
     end
   end

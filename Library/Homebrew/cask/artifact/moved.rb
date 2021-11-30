@@ -1,8 +1,17 @@
+# typed: false
+# frozen_string_literal: true
+
 require "cask/artifact/relocated"
 
 module Cask
   module Artifact
+    # Superclass for all artifacts that are installed by moving them to the target location.
+    #
+    # @api private
     class Moved < Relocated
+      extend T::Sig
+
+      sig { returns(String) }
       def self.english_description
         "#{english_name}s"
       end
@@ -39,19 +48,27 @@ module Cask
           raise CaskError, "It seems the #{self.class.english_name} source '#{source}' is not there."
         end
 
-        ohai "Moving #{self.class.english_name} '#{source.basename}' to '#{target}'."
-        target.dirname.mkpath
+        ohai "Moving #{self.class.english_name} '#{source.basename}' to '#{target}'"
+        if target.dirname.ascend.find(&:directory?).writable?
+          target.dirname.mkpath
+        else
+          command.run!("/bin/mkdir", args: ["-p", target.dirname], sudo: true)
+        end
 
-        if target.parent.writable?
+        if target.dirname.writable?
           FileUtils.move(source, target)
         else
           command.run!("/bin/mv", args: [source, target], sudo: true)
         end
 
+        FileUtils.ln_sf target, source
+
         add_altname_metadata(target, source.basename, command: command)
       end
 
       def move_back(skip: false, force: false, command: nil, **options)
+        FileUtils.rm source if source.symlink? && source.dirname.join(source.readlink) == target
+
         if Utils.path_occupied?(source)
           message = "It seems there is already #{self.class.english_article} " \
                     "#{self.class.english_name} at '#{source}'"
@@ -67,7 +84,7 @@ module Cask
           raise CaskError, "It seems the #{self.class.english_name} source '#{target}' is not there."
         end
 
-        ohai "Backing #{self.class.english_name} '#{target.basename}' up to '#{source}'."
+        ohai "Backing #{self.class.english_name} '#{target.basename}' up to '#{source}'"
         source.dirname.mkpath
 
         # We need to preserve extended attributes between copies.
@@ -77,7 +94,7 @@ module Cask
       end
 
       def delete(target, force: false, command: nil, **_)
-        ohai "Removing #{self.class.english_name} '#{target}'."
+        ohai "Removing #{self.class.english_name} '#{target}'"
         raise CaskError, "Cannot remove undeletable #{self.class.english_name}." if MacOS.undeletable?(target)
 
         return unless Utils.path_occupied?(target)

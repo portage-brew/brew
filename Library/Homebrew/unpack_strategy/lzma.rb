@@ -1,9 +1,16 @@
+# typed: true
+# frozen_string_literal: true
+
 module UnpackStrategy
+  # Strategy for unpacking LZMA archives.
   class Lzma
+    extend T::Sig
+
     include UnpackStrategy
 
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [".lzma"]
     end
@@ -12,6 +19,13 @@ module UnpackStrategy
       path.magic_number.match?(/\A\]\000\000\200\000/n)
     end
 
+    def dependencies
+      @dependencies ||= [Formula["xz"]]
+    end
+
+    private
+
+    sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
     def extract_to_dir(unpack_dir, basename:, verbose:)
       FileUtils.cp path, unpack_dir/basename, preserve: true
       quiet_flags = verbose ? [] : ["-q"]
@@ -19,10 +33,6 @@ module UnpackStrategy
                       args:    [*quiet_flags, "--", unpack_dir/basename],
                       env:     { "PATH" => PATH.new(Formula["xz"].opt_bin, ENV["PATH"]) },
                       verbose: verbose
-    end
-
-    def dependencies
-      @dependencies ||= [Formula["xz"]]
     end
   end
 end

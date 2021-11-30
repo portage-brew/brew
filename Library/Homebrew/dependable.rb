@@ -1,8 +1,14 @@
+# typed: true
+# frozen_string_literal: true
+
 require "options"
 
+# Shared functions for classes which can be depended upon.
+#
+# @api private
 module Dependable
-  # `:run` and `:linked` are no longer used but keep them here to avoid them being
-  # misused in future.
+  # `:run` and `:linked` are no longer used but keep them here to avoid their
+  # misuse in future.
   RESERVED_TAGS = [:build, :optional, :recommended, :run, :test, :linked].freeze
 
   def build?

@@ -1,86 +1,50 @@
-#:  * `commands` [`--quiet` [`--include-aliases`]]:
-#:    Show a list of built-in and external commands.
-#:
-#:    If `--quiet` is passed, list only the names of commands without the header.
-#:    With `--include-aliases`, the aliases of internal commands will be included.
+# typed: false
+# frozen_string_literal: true
 
-require "cli_parser"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
   def commands_args
     Homebrew::CLI::Parser.new do
-      usage_banner <<~EOS
-        `commands` [<options>]
-
-        Show a list of built-in and external commands.
+      description <<~EOS
+        Show lists of built-in and external commands.
       EOS
-      switch "--quiet",
-        description: "List only the names of commands without the header."
+      switch "-q", "--quiet",
+             description: "List only the names of commands without category headers."
       switch "--include-aliases",
-        depends_on:  "--quiet",
-        description: "Include the aliases of internal commands."
-      switch :verbose
-      switch :debug
+             depends_on:  "--quiet",
+             description: "Include aliases of internal commands."
+
+      named_args :none
     end
   end
 
   def commands
-    commands_args.parse
+    args = commands_args.parse
 
     if args.quiet?
-      cmds = internal_commands
-      cmds += external_commands
-      cmds += internal_developer_commands
-      cmds += HOMEBREW_INTERNAL_COMMAND_ALIASES.keys if args.include_aliases?
-      puts Formatter.columns(cmds.sort)
+      puts Formatter.columns(Commands.commands(aliases: args.include_aliases?))
       return
     end
 
-    # Find commands in Homebrew/cmd
-    puts "Built-in commands"
-    puts Formatter.columns(internal_commands.sort)
+    prepend_separator = false
 
-    # Find commands in Homebrew/dev-cmd
-    puts
-    puts "Built-in developer commands"
-    puts Formatter.columns(internal_developer_commands.sort)
+    {
+      "Built-in commands"           => Commands.internal_commands,
+      "Built-in developer commands" => Commands.internal_developer_commands,
+      "External commands"           => Commands.external_commands,
+    }.each do |title, commands|
+      next if commands.blank?
 
-    exts = external_commands
-    return if exts.empty?
+      puts if prepend_separator
+      ohai title, Formatter.columns(commands)
 
-    # Find commands in the PATH
-    puts
-    puts "External commands"
-    puts Formatter.columns(exts)
-  end
-
-  def internal_commands
-    find_internal_commands HOMEBREW_LIBRARY_PATH/"cmd"
-  end
-
-  def internal_developer_commands
-    find_internal_commands HOMEBREW_LIBRARY_PATH/"dev-cmd"
-  end
-
-  def external_commands
-    cmd_paths = PATH.new(ENV["PATH"]).append(Tap.cmd_directories)
-    cmd_paths.each_with_object([]) do |path, cmds|
-      Dir["#{path}/brew-*"].each do |file|
-        next unless File.executable?(file)
-
-        cmd = File.basename(file, ".rb")[5..-1]
-        next if cmd.include?(".")
-
-        cmds << cmd
-      end
-    end.sort
-  end
-
-  def find_internal_commands(directory)
-    Pathname.glob(directory/"*")
-            .select(&:file?)
-            .map { |f| f.basename.to_s.sub(/\.(?:rb|sh)$/, "") }
+      prepend_separator ||= true
+    end
   end
 end

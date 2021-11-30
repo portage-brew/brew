@@ -1,3 +1,6 @@
+# typed: false
+# frozen_string_literal: true
+
 describe Cask::Artifact::Zap, :cask do
   let(:cask) { Cask::CaskLoader.load(cask_path("with-installable")) }
 

@@ -1,5 +1,11 @@
+# typed: true
+# frozen_string_literal: true
+
 require "keg"
 
+# Helper functions for pinning a formula.
+#
+# @api private
 class FormulaPin
   def initialize(f)
     @f = f
@@ -12,7 +18,7 @@ class FormulaPin
   def pin_at(version)
     HOMEBREW_PINNED_KEGS.mkpath
     version_path = @f.rack/version
-    path.make_relative_symlink(version_path) unless pinned? || !version_path.exist?
+    path.make_relative_symlink(version_path) if !pinned? && version_path.exist?
   end
 
   def pin

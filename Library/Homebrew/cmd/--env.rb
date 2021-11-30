@@ -1,44 +1,58 @@
-#:  * `--env` [`--shell=`(<shell>|`auto`)|`--plain`]:
-#:    Show a summary of the Homebrew build environment as a plain list.
-#:
-#:    Pass `--shell=`<shell> to generate a list of environment variables for the
-#:    specified shell, or `--shell=auto` to detect the current shell.
-#:
-#:    If the command's output is sent through a pipe and no shell is specified,
-#:    the list is formatted for export to `bash`(1) unless `--plain` is passed.
+# typed: false
+# frozen_string_literal: true
 
 require "extend/ENV"
 require "build_environment"
 require "utils/shell"
+require "cli/parser"
 
 module Homebrew
+  extend T::Sig
+
   module_function
 
+  sig { returns(CLI::Parser) }
+  def __env_args
+    Homebrew::CLI::Parser.new do
+      description <<~EOS
+        Summarise Homebrew's build environment as a plain list.
+
+        If the command's output is sent through a pipe and no shell is specified,
+        the list is formatted for export to `bash`(1) unless `--plain` is passed.
+      EOS
+      flag   "--shell=",
+             description: "Generate a list of environment variables for the specified shell, " \
+                          "or `--shell=auto` to detect the current shell."
+      switch "--plain",
+             description: "Generate plain output even when piped."
+
+      named_args :formula
+    end
+  end
+
+  sig { void }
   def __env
+    args = __env_args.parse
+
     ENV.activate_extensions!
-    ENV.deps = ARGV.formulae if superenv?
+    ENV.deps = args.named.to_formulae if superenv?(nil)
     ENV.setup_build_environment
-    ENV.universal_binary if ARGV.build_universal?
 
-    shell_value = ARGV.value("shell")
-
-    if ARGV.include?("--plain")
-      shell = nil
-    elsif shell_value.nil?
-      # legacy behavior
-      shell = :bash unless $stdout.tty?
-    elsif shell_value == "auto"
-      shell = Utils::Shell.parent || Utils::Shell.preferred
-    elsif shell_value
-      shell = Utils::Shell.from_path(shell_value)
+    shell = if args.plain?
+      nil
+    elsif args.shell.nil?
+      :bash unless $stdout.tty?
+    elsif args.shell == "auto"
+      Utils::Shell.parent || Utils::Shell.preferred
+    elsif args.shell
+      Utils::Shell.from_path(args.shell)
     end
 
-    env_keys = build_env_keys(ENV)
     if shell.nil?
-      dump_build_env ENV
+      BuildEnvironment.dump ENV
     else
-      env_keys.each do |key|
-        puts Utils::Shell.export_value(key, ENV[key], shell)
+      BuildEnvironment.keys(ENV).each do |key|
+        puts Utils::Shell.export_value(key, ENV.fetch(key), shell)
       end
     end
   end

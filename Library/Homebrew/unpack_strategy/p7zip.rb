@@ -1,9 +1,16 @@
+# typed: true
+# frozen_string_literal: true
+
 module UnpackStrategy
+  # Strategy for unpacking P7ZIP archives.
   class P7Zip
+    extend T::Sig
+
     include UnpackStrategy
 
     using Magic
 
+    sig { returns(T::Array[String]) }
     def self.extensions
       [".7z"]
     end
@@ -18,6 +25,7 @@ module UnpackStrategy
 
     private
 
+    sig { override.params(unpack_dir: Pathname, basename: Pathname, verbose: T::Boolean).returns(T.untyped) }
     def extract_to_dir(unpack_dir, basename:, verbose:)
       system_command! "7zr",
                       args:    ["x", "-y", "-bd", "-bso0", path, "-o#{unpack_dir}"],

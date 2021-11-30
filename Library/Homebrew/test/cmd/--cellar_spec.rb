@@ -1,14 +1,21 @@
-describe "brew --cellar", :integration_test do
-  it "print the location of Homebrew's Cellar when no argument is given" do
-    expect { brew "--cellar" }
-      .to output("#{HOMEBREW_CELLAR}\n").to_stdout
+# typed: false
+# frozen_string_literal: true
+
+require "cmd/shared_examples/args_parse"
+
+describe "brew --cellar" do
+  it_behaves_like "parseable arguments"
+
+  it "prints Homebrew's Cellar", :integration_test do
+    expect { brew_sh "--cellar" }
+      .to output("#{ENV["HOMEBREW_CELLAR"]}\n").to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end
 
-  it "returns the Cellar subdirectory for a given Formula" do
+  it "prints the Cellar for a Formula", :integration_test do
     expect { brew "--cellar", testball }
-      .to output(%r{#{HOMEBREW_CELLAR}/testball}).to_stdout
+      .to output(%r{#{HOMEBREW_CELLAR}/testball}o).to_stdout
       .and not_to_output.to_stderr
       .and be_a_success
   end

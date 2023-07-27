@@ -92,7 +92,7 @@ GEM
       unparser
     rdiscount (2.2.0.2)
     regexp_parser (2.1.1)
-    rexml (3.2.5)
+    rexml (3.2.6)
     ronn (0.7.3)
       hpricot (>= 0.8.2)
       mustache (>= 0.7.0)
